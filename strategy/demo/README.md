@@ -1,27 +1,8 @@
 # crowding_price_volume
 
-A 股日频策略：双层量能 × 价量 × 拥挤 × 相对估值，基准沪深300，本金账本回测。
+实验策略：双层量能 × 价量 × 拥挤 × 相对估值，基准沪深300，本金账本回测。
 
 唯一活版本：v1.0（策略参数 + 费用/滑点 + 富化信号面板同一版本号）。
-
-> 历史面板流水线脚本名里的 `v26/v27/v28` 只是重建步骤，不是第二套策略版本。
-
-## 文件树
-
-```text
-demo/
-├── README.md
-├── config/           # 参数分层（Core / Overlays / Dormant / Execution）+ 活版本 v1.0
-├── features/         # 信号面板（build_panel + sota_factors）
-├── engine/           # 策略级回测引擎（portfolio / entry / walkforward）
-├── cli/              # 日荐 / 回测 / 面板重建 / 发版
-├── lib/              # DB 连接 / 路径 / 市场数据加载
-├── docs/             # STRATEGY + specs
-├── cache/            # signals_*_v1.0.parquet（当前默认）
-├── reports/          # PERFORMANCE.md + trades.csv + ledger_daily.csv
-├── releases/         # 活版本序列（v1.0 …）
-└── archive/          # 旧版 flat15bp、实验笔记、消融脚本
-```
 
 ## 阅读顺序
 

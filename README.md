@@ -15,15 +15,7 @@ AShare_Alpha/
 │   ├── warehouse/          #   派生层（stock_daily / ASOF join）
 │   └── catalog/            #   DuckDB 研究层（quant.duckdb）
 ├── backtest/               # 通用回测工具（metrics / costs / slippage）
-├── strategy/               # 策略实现
-│   ├── LESSONS.md          #   策略复盘与经验沉淀
-│   └── demo/               #   crowding_price_volume 策略
-│       ├── config/         #     参数分层 + 活版本 v1.0
-│       ├── features/       #     信号面板构建
-│       ├── engine/         #     策略级回测引擎（portfolio / entry / walkforward）
-│       ├── cli/            #     日荐 / 回测 / 面板重建
-│       ├── cache/          #     signals_*_v1.0.parquet
-│       └── docs/           #     策略文档
+├── strategy/               # 策略实现（见 strategy/README.md）
 ├── utils/                  # 日荐注册 / adapter / 仓位 / 落盘
 └── output/                 # 日荐报告（按执行日）
 ```
@@ -38,11 +30,11 @@ python3 daily_update.py --data-only       # 只更新库，不重建面板
 python3 daily_update.py --workers 8       # 8 线程并行拉取
 
 # 2. 策略日荐（daily_update 跑完后即可）
-python3 run.py crowding_price_volume
-# → output/crowding_price_volume/<exec_date>/report.md
+python3 run.py <strategy>
+# → output/<strategy>/<exec_date>/report.md
 
-# 3. 回测验证
-cd strategy/demo && python3 cli/run_backtest.py
+# 3. 回测验证（在策略目录下）
+cd strategy/<name> && python3 run_backtest.py
 # → reports/PERFORMANCE.md + trades.csv + ledger_daily.csv
 ```
 
@@ -75,12 +67,6 @@ cd strategy/demo && python3 cli/run_backtest.py
 
 ## 策略
 
-当前唯一策略 `crowding_price_volume`（双层量能 × 价量 × 拥挤 × 相对估值）：
+策略实现规范见 [`strategy/README.md`](strategy/README.md)，策略复盘与经验沉淀见 [`strategy/LESSONS.md`](strategy/LESSONS.md)。
 
-- 策略代码在 `strategy/demo/`
-- 注册名 `crowding_price_volume`，通过 `utils/adapters/` 自动注册
-- 活版本 v1.0，信号面板缓存在 `strategy/demo/cache/`
-- 回测结果：年化 14.6%，Sharpe 1.12，最大回撤 -17.7%，Beta 0.18
-
-细节见 [`strategy/demo/README.md`](strategy/demo/README.md)。
-策略复盘与经验沉淀见 [`strategy/LESSONS.md`](strategy/LESSONS.md)。
+当前有一个实验策略 `crowding_price_volume`（双层量能 × 价量 × 拥挤 × 相对估值），注册名通过 `utils/adapters/` 自动注册。

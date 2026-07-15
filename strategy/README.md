@@ -4,3 +4,4 @@
 
 - 运行：`python3 run.py <strategy>`
 - 报告：`output/<strategy>/<exec_date>/`
+- 复盘与经验沉淀：[`LESSONS.md`](LESSONS.md)

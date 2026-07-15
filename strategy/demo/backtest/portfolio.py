@@ -560,26 +560,40 @@ def run_portfolio(
     px = bars.set_index(["code", "date"])
     sig_idx = sig.set_index(["date", "code"], drop=False)
     breadth = _build_breadth_by_date(sig) if params.enable_risk_on else None
-    overlay = _build_market_overlay(market, params, breadth=breadth)
+    internals = (
+        _build_internals_by_date(
+            sig,
+            lookback=params.false_bull_lookback,
+            min_streak=params.false_bull_min_streak,
+        )
+        if params.enable_false_bull_fuse
+        else None
+    )
+    overlay = _build_market_overlay(
+        market, params, breadth=breadth, internals=internals
+    )
 
     dates = sorted(sig["date"].unique())
     if len(dates) < 2:
         return {"error": "not enough dates"}
 
-    def day_overlay(dt) -> tuple[bool, float, bool]:
+    def day_overlay(dt) -> tuple[bool, float, bool, bool, bool]:
+        """Return (bull, vol_scale, risk_on, exposure_ok, false_bull)."""
         if overlay.empty:
-            return False, 1.0, False
+            return False, 1.0, False, False, False
         ts = pd.Timestamp(dt)
         if ts not in overlay.index:
             prior = overlay.index[overlay.index <= ts]
             if len(prior) == 0:
-                return False, 1.0, False
+                return False, 1.0, False, False, False
             ts = prior[-1]
         row = overlay.loc[ts]
         return (
             bool(row["bull"]),
             float(row["vol_scale"]),
             bool(row["risk_on"]) if "risk_on" in row.index else False,
+            bool(row["risk_on_exposure_ok"]) if "risk_on_exposure_ok" in row.index else False,
+            bool(row["false_bull"]) if "false_bull" in row.index else False,
         )
     core_actions = ["open_A"]
     if params.enable_open_b:

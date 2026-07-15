@@ -7,11 +7,14 @@ from pathlib import Path
 
 import pandas as pd
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
+_REPO = Path(__file__).resolve().parents[5]
+if str(_REPO) not in sys.path:
+    sys.path.insert(0, str(_REPO))
 sys.path.insert(0, str(ROOT))
 
 from backtest.metrics import compute_metrics
-from backtest.portfolio import run_portfolio
+from engine.portfolio import run_portfolio
 from cli.run_backtest import load_bars, load_hs300
 from config.params import DEFAULT_PARAMS, REPORT_DIR, SAMPLE_START, safe_replace
 from features.build_panel import load_signals

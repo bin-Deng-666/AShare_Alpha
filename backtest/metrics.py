@@ -1,4 +1,8 @@
-"""Compute full performance metrics vs HS300."""
+"""Compute full performance metrics vs benchmark.
+
+Pure math, zero strategy coupling. Works with any strategy that produces
+daily equity logs and a trade blotter in the expected schema.
+"""
 
 from __future__ import annotations
 
@@ -24,10 +28,14 @@ def compute_metrics(
     trades: pd.DataFrame,
     bench: pd.DataFrame,
     initial_capital: float,
+    *,
+    benchmark_name: str = "沪深300",
+    benchmark_code: str = "000300",
+    trading_days: int = 242,
 ) -> dict:
     """
     daily: date, equity, nav, daily_ret, cash, market_value, n_positions, cash_ratio, daily_pnl
-    trades: blotter
+    trades: blotter with side, amount, fee, realized_pnl, hold_days
     bench: date, ret (open-to-open)
     """
     d = daily.copy()
@@ -39,7 +47,6 @@ def compute_metrics(
         return {"error": "no overlap with benchmark"}
 
     m["bench_nav"] = (1 + m["bench_ret"]).cumprod()
-    # rebase bench to start at 1 on first overlap day
     m["bench_nav"] = m["bench_nav"] / m["bench_nav"].iloc[0]
     m["strategy_nav"] = m["equity"] / initial_capital
     m["excess_ret"] = m["daily_ret"] - m["bench_ret"]
@@ -53,9 +60,9 @@ def compute_metrics(
     ann_return = (1 + total_return) ** (1 / n_years) - 1
 
     rets = m["daily_ret"]
-    ann_vol = float(rets.std() * np.sqrt(242))
+    ann_vol = float(rets.std() * np.sqrt(trading_days))
     downside = rets[rets < 0]
-    downside_dev = float(downside.std() * np.sqrt(242)) if len(downside) else float("nan")
+    downside_dev = float(downside.std() * np.sqrt(trading_days)) if len(downside) else float("nan")
     nav = m["strategy_nav"]
     max_dd = float((nav / nav.cummax() - 1).min())
     max_dd_dur = _max_dd_duration(nav)
@@ -65,42 +72,37 @@ def compute_metrics(
 
     b_total = float(m["bench_nav"].iloc[-1] - 1)
     b_ann = (1 + b_total) ** (1 / n_years) - 1
-    b_vol = float(m["bench_ret"].std() * np.sqrt(242))
+    b_vol = float(m["bench_ret"].std() * np.sqrt(trading_days))
     b_nav = m["bench_nav"]
     b_dd = float((b_nav / b_nav.cummax() - 1).min())
     b_sharpe = float(b_ann / b_vol) if b_vol > 1e-12 else float("nan")
 
     excess_total = float(m["excess_nav"].iloc[-1] - 1)
     excess_ann = (1 + excess_total) ** (1 / n_years) - 1
-    te = float(m["excess_ret"].std() * np.sqrt(242))
+    te = float(m["excess_ret"].std() * np.sqrt(trading_days))
     ir = float(excess_ann / te) if te > 1e-12 else float("nan")
     excess_win = float((m["excess_ret"] > 0).mean())
     excess_dd = float((m["excess_nav"] / m["excess_nav"].cummax() - 1).min())
 
-    # beta / alpha
     x = m["bench_ret"].values
     y = m["daily_ret"].values
     if len(x) > 5 and np.std(x) > 1e-12:
         beta = float(np.cov(y, x, ddof=1)[0, 1] / np.var(x, ddof=1))
         alpha_daily = float(np.mean(y) - beta * np.mean(x))
-        alpha_ann = alpha_daily * 242
+        alpha_ann = alpha_daily * trading_days
         corr = float(np.corrcoef(y, x)[0, 1])
     else:
         beta = alpha_ann = corr = float("nan")
 
-    # trades
     t = trades.copy() if trades is not None and len(trades) else pd.DataFrame()
     n_buys = int((t["side"] == "BUY").sum()) if len(t) else 0
     n_sells = int((t["side"] == "SELL").sum()) if len(t) else 0
     total_fees = float(t["fee"].sum()) if len(t) else 0.0
     sells = t[t["side"] == "SELL"] if len(t) else t
     realized = float(sells["realized_pnl"].sum()) if len(sells) else 0.0
-    # unrealized: ending MV - cost of open positions approx from last equity - cash - realized path
-    # use ending market value - remaining cost basis if we tracked; approximate from daily
     ending_mv = float(m["market_value"].iloc[-1])
     ending_cash = float(m["cash"].iloc[-1])
-    # remaining cost from buys - sells notionally hard; use equity identity
-    unrealized = total_pnl - realized  # residual incl fees effects
+    unrealized = total_pnl - realized
 
     if len(sells):
         wins = sells[sells["realized_pnl"] > 0]["realized_pnl"]
@@ -123,19 +125,17 @@ def compute_metrics(
     avg_equity = float(m["equity"].mean())
     turnover_ann = (traded_notional / avg_equity / n_years) if avg_equity > 0 else float("nan")
 
-    # yearly
-    y = m.copy()
-    y["year"] = y["date"].dt.year
+    y_df = m.copy()
+    y_df["year"] = y_df["date"].dt.year
     yearly = []
-    for year, g in y.groupby("year"):
+    for year, g in y_df.groupby("year"):
         s_ret = float(g["equity"].iloc[-1] / g["equity"].iloc[0] - 1)
-        # bench within year from daily bench_ret
         b_ret = float((1 + g["bench_ret"]).prod() - 1)
         yearly.append(
             {
                 "year": int(year),
                 "strategy": s_ret,
-                "hs300": b_ret,
+                "benchmark": b_ret,
                 "excess": s_ret - b_ret,
             }
         )
@@ -145,7 +145,7 @@ def compute_metrics(
         {
             "date": str(idx.date()),
             "strategy": float(row["strategy_nav"]),
-            "hs300": float(row["bench_nav"]),
+            "benchmark": float(row["bench_nav"]),
             "excess": float(row["excess_nav"]),
             "equity": float(row["equity"]),
         }
@@ -215,8 +215,8 @@ def compute_metrics(
             "end": str(end.date()),
             "days": int(len(m)),
             "n_years": float(n_years),
-            "benchmark": "沪深300",
-            "benchmark_code": "000300",
+            "benchmark": benchmark_name,
+            "benchmark_code": benchmark_code,
         },
         "yearly": yearly,
         "nav_monthly": nav_monthly,

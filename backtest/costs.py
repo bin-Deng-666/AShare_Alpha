@@ -1,24 +1,51 @@
-"""Execution costs, slippage, helpers."""
+"""A-share execution costs, slippage, lot helpers.
+
+Strategy-independent: accepts any params-like object via duck typing.
+Required attributes on params (when respective flags are enabled):
+  - enable_realistic_costs, cost_bps, commission_bps, min_commission,
+    transfer_fee_bps, stamp_tax_bps
+  - enable_open_slippage, slippage_bps_large/mid/small,
+    slippage_mcap_large/mid, slippage_amt_large/mid
+"""
 
 from __future__ import annotations
+
+from typing import Any, Protocol
 
 import numpy as np
 import pandas as pd
 
-from config.params import Params
 
-def _fee(notional: float, cost_bps: float) -> float:
+class CostParams(Protocol):
+    """Structural type for cost-related parameters (duck-typed)."""
+    enable_realistic_costs: bool
+    cost_bps: float
+    commission_bps: float
+    min_commission: float
+    transfer_fee_bps: float
+    stamp_tax_bps: float
+    enable_open_slippage: bool
+    slippage_bps_large: float
+    slippage_bps_mid: float
+    slippage_bps_small: float
+    slippage_mcap_large: float
+    slippage_mcap_mid: float
+    slippage_amt_large: float
+    slippage_amt_mid: float
+
+
+def flat_fee(notional: float, cost_bps: float) -> float:
     """Legacy flat one-way fee."""
     return abs(notional) * cost_bps / 10000.0
 
 
-def _trade_fee(notional: float, side: str, params: Params) -> float:
+def trade_fee(notional: float, side: str, params: Any) -> float:
     """Buy/sell fee. Realistic mode: commission (+ stamp on sell) + transfer."""
     n = abs(float(notional))
     if n <= 0:
         return 0.0
     if not getattr(params, "enable_realistic_costs", False):
-        return _fee(n, params.cost_bps)
+        return flat_fee(n, params.cost_bps)
     commission = max(float(params.min_commission), n * float(params.commission_bps) / 10000.0)
     fee = commission + n * float(params.transfer_fee_bps) / 10000.0
     if str(side).upper() == "SELL":
@@ -26,7 +53,7 @@ def _trade_fee(notional: float, side: str, params: Params) -> float:
     return float(fee)
 
 
-def _slippage_bps_for_row(row: pd.Series | dict | None, params: Params) -> float:
+def slippage_bps_for_row(row: pd.Series | dict | None, params: Any) -> float:
     """Adverse open slippage bps from signal-day liquidity (no look-ahead)."""
     if not getattr(params, "enable_open_slippage", False):
         return 0.0
@@ -49,7 +76,6 @@ def _slippage_bps_for_row(row: pd.Series | dict | None, params: Params) -> float
     except (TypeError, ValueError):
         amt = np.nan
 
-    # Prefer float mcap tiers; fall back to amount; HS300 treated as large
     is_hs = bool(_get("is_hs300", False)) or str(_get("index_tier", "") or "") == "hs300"
     if is_hs or (np.isfinite(mcap) and mcap >= float(params.slippage_mcap_large)):
         bps = float(params.slippage_bps_large)
@@ -66,7 +92,7 @@ def _slippage_bps_for_row(row: pd.Series | dict | None, params: Params) -> float
     return bps
 
 
-def _apply_slip(price: float, side: str, slip_bps: float) -> float:
+def apply_slippage(price: float, side: str, slip_bps: float) -> float:
     if not np.isfinite(price) or price <= 0:
         return price
     bps = float(slip_bps or 0.0)
@@ -77,8 +103,5 @@ def _apply_slip(price: float, side: str, slip_bps: float) -> float:
     return float(price) * (1.0 - bps / 10000.0)
 
 
-def _lot_floor(shares: int, lot: int) -> int:
+def lot_floor(shares: int, lot: int) -> int:
     return (shares // lot) * lot
-
-
-

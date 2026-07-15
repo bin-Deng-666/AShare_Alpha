@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from backtest.metrics import compute_metrics
-from backtest.portfolio import run_portfolio
+from engine.portfolio import run_portfolio
 from cli.run_backtest import load_bars, load_hs300
 from config.params import DEFAULT_PARAMS, REPORT_DIR
 from features.build_panel import load_signals

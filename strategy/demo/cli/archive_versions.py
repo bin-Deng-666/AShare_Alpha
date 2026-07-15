@@ -12,11 +12,14 @@ from pathlib import Path
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
+REPO = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
 
 from backtest.metrics import compute_metrics
-from backtest.portfolio import run_portfolio
+from engine.portfolio import run_portfolio
 from cli.run_backtest import load_bars, load_hs300, write_report_bundle
 from config.params import REPORT_DIR, SAMPLE_START
 from config.versions import ARCHIVABLE, CURRENT_VERSION, VERSION_PRESETS

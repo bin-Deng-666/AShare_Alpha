@@ -1,6 +1,6 @@
 # 规格：联合决策矩阵
 
-将双层量能、价量、拥挤、估值合成为动作枚举。实现：`features/build_panel.py`（信号面板）+ `backtest/portfolio.py`（成交）。
+将双层量能、价量、拥挤、估值合成为动作枚举。实现：`features/build_panel.py`（信号面板）+ `engine/portfolio.py`（成交）。
 
 **实现开关（v1.0）：** 面板可产出 `open_A/B/C`；组合与日荐默认仅消费 `open_A`（`enable_open_b=False`、`enable_open_c=False`，`allowed_attack_modes=("full_attack",)`）。下列 B/C 条件为规格；打开对应 flag 后再生效。
 

@@ -5,7 +5,7 @@
 | 实验 ID | `20260713_exit_entry_optimize` |
 | 日期 | 2026-07-13 |
 | 假设变更 | 修复有毒 avoid 全砍、降换手、关掉 open_B、加止损止盈 |
-| 涉及 | `config/params.py` `backtest/portfolio.py` `features/build_panel.py` |
+| 涉及 | `config/params.py` `engine/portfolio.py` `features/build_panel.py` |
 | 基准 | 沪深300 · 本金 100 万 · 2020-01 → 2026-07 |
 
 ## 动机

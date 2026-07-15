@@ -11,11 +11,14 @@ from pathlib import Path
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
+REPO = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
 
 from backtest.metrics import compute_metrics
-from backtest.portfolio import run_portfolio
+from engine.portfolio import run_portfolio
 from config.params import (
     DEFAULT_PARAMS,
     REPORT_DIR,
@@ -161,7 +164,7 @@ def write_performance_hub(
     ]
     for row in metrics["yearly"]:
         lines.append(
-            f"| {row['year']} | {pct(row['strategy'])} | {pct(row['hs300'])} | {pct(row['excess'])} |"
+            f"| {row['year']} | {pct(row['strategy'])} | {pct(row['benchmark'])} | {pct(row['excess'])} |"
         )
     if getattr(params, "enable_realistic_costs", False):
         exec_note = (

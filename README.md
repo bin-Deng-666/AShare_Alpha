@@ -14,11 +14,13 @@ AShare_Alpha/
 │   ├── parquet/            #   原始层（行情 / 财务 / 公告 / 股本…）
 │   ├── warehouse/          #   派生层（stock_daily / ASOF join）
 │   └── catalog/            #   DuckDB 研究层（quant.duckdb）
+├── backtest/               # 通用回测工具（metrics / costs / slippage）
 ├── strategy/               # 策略实现
+│   ├── LESSONS.md          #   策略复盘与经验沉淀
 │   └── demo/               #   crowding_price_volume 策略
 │       ├── config/         #     参数分层 + 活版本 v1.0
 │       ├── features/       #     信号面板构建
-│       ├── backtest/       #     回测引擎
+│       ├── engine/         #     策略级回测引擎（portfolio / entry / walkforward）
 │       ├── cli/            #     日荐 / 回测 / 面板重建
 │       ├── cache/          #     signals_*_v1.0.parquet
 │       └── docs/           #     策略文档
@@ -38,6 +40,10 @@ python3 daily_update.py --workers 8       # 8 线程并行拉取
 # 2. 策略日荐（daily_update 跑完后即可）
 python3 run.py crowding_price_volume
 # → output/crowding_price_volume/<exec_date>/report.md
+
+# 3. 回测验证
+cd strategy/demo && python3 cli/run_backtest.py
+# → reports/PERFORMANCE.md + trades.csv + ledger_daily.csv
 ```
 
 ## 数据层
@@ -54,6 +60,19 @@ python3 run.py crowding_price_volume
 
 细节见 [`data/README.md`](data/README.md)。
 
+## 回测工具层
+
+`backtest/` 是策略无关的通用工具，任何策略都可以直接导入：
+
+| 模块 | 用途 | 依赖 |
+|------|------|------|
+| `backtest.metrics` | Sharpe / Sortino / Calmar / Alpha / Beta / 胜率 / 盈利因子 / 分年统计 | 仅 numpy / pandas |
+| `backtest.costs` | A 股佣金 / 印花税 / 过户费 / 分档滑点 / 手数取整 | 鸭子类型 params，不绑定任何策略 |
+
+策略自己的回测引擎放在 `strategy/<name>/engine/`，通过 `from backtest.metrics import compute_metrics` 和 `from backtest.costs import trade_fee` 调用通用层。
+
+细节见 [`backtest/README.md`](backtest/README.md)。
+
 ## 策略
 
 当前唯一策略 `crowding_price_volume`（双层量能 × 价量 × 拥挤 × 相对估值）：
@@ -61,5 +80,7 @@ python3 run.py crowding_price_volume
 - 策略代码在 `strategy/demo/`
 - 注册名 `crowding_price_volume`，通过 `utils/adapters/` 自动注册
 - 活版本 v1.0，信号面板缓存在 `strategy/demo/cache/`
+- 回测结果：年化 14.6%，Sharpe 1.12，最大回撤 -17.7%，Beta 0.18
 
 细节见 [`strategy/demo/README.md`](strategy/demo/README.md)。
+策略复盘与经验沉淀见 [`strategy/LESSONS.md`](strategy/LESSONS.md)。

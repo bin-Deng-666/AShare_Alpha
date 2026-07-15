@@ -1,6 +1,6 @@
 # 策略效果指标体系（对沪深300）
 
-本文件定义 **必须产出** 的指标；实现见 `backtest/metrics.py`，汇总进 `reports/PERFORMANCE.*`。
+本文件定义 **必须产出** 的指标；实现见 `backtest/metrics.py`（仓库根），汇总进 `reports/PERFORMANCE.*`。
 
 口径约定：
 

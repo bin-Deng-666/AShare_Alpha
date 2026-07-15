@@ -12,7 +12,7 @@ __pycache__/
 
 # Runtime / local outputs
 output/
-strategies/**/output/
+strategy/**/output/
 
 # A-share research data warehouse (keep code/config/docs only)
 data/parquet/
@@ -26,5 +26,5 @@ data/**/*.duckdb.wal
 
 # Strategy signal / feature caches
 **/*.parquet
-strategies/**/cache/*
-!strategies/**/cache/README.md
+strategy/**/cache/*
+!strategy/**/cache/README.md

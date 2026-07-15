@@ -10,7 +10,7 @@ from utils.sink import write_run_bundle
 from utils.sizing import attach_orders
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-STRATEGIES_ROOT = REPO_ROOT / "strategies"
+STRATEGIES_ROOT = REPO_ROOT / "strategy"
 OUTPUT_DIR = REPO_ROOT / "output"
 
 
@@ -29,7 +29,7 @@ def _sizing_kwargs(strategy: str, capital: float | None) -> dict[str, Any]:
     try:
         import sys
 
-        root = str(STRATEGIES_ROOT / strategy)
+        root = str(STRATEGIES_ROOT / "demo")
         if root not in sys.path:
             sys.path.insert(0, root)
         from config.params import DEFAULT_PARAMS as p

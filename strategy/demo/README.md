@@ -9,7 +9,7 @@ A 股日频策略：**双层量能 × 价量 × 拥挤 × 相对估值**，基�
 ## 文件树
 
 ```text
-crowding_price_volume/
+demo/
 ├── README.md
 ├── config/           # 参数分层（Core / Overlays / Dormant / Execution）+ 活版本 v1.0
 ├── features/         # 信号面板
@@ -41,7 +41,7 @@ crowding_price_volume/
 ## 命令
 
 ```bash
-cd strategies/crowding_price_volume
+cd strategy/demo
 
 # 日荐 / 回测默认都读 v1.0 面板
 python3 cli/run_daily.py

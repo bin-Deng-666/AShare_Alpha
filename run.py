@@ -29,7 +29,7 @@ def main(argv: list[str] | None = None) -> int:
         "strategy",
         nargs="?",
         default=None,
-        help=f"strategy folder under strategies/; known: {', '.join(list_strategies())}",
+        help=f"strategy name; known: {', '.join(list_strategies())}",
     )
     ap.add_argument("--date", default=None, help="signal date YYYY-MM-DD (default: latest in panel)")
     ap.add_argument("--rebuild", action="store_true", help="force rebuild signal panel")

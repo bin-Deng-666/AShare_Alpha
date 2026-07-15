@@ -11,7 +11,7 @@ import pandas as pd
 from utils.registry import register
 
 STRATEGY_NAME = "crowding_price_volume"
-STRATEGY_ROOT = Path(__file__).resolve().parents[2] / "strategies" / STRATEGY_NAME
+STRATEGY_ROOT = Path(__file__).resolve().parents[2] / "strategy" / "demo"
 
 PICK_FIELDS = [
     "code",

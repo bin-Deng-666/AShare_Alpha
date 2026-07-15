@@ -3,7 +3,7 @@
 特征与信号面板由 `build_panel.py` 一次性在 DuckDB 中计算并落盘到 `../cache/signals_*.parquet`。
 
 ```bash
-cd strategies/crowding_price_volume
+cd strategy/demo
 python3 -c "from features.build_panel import build_signal_panel; build_signal_panel('2020-01-01')"
 ```
 

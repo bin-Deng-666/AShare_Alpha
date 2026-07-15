@@ -1,4 +1,4 @@
-"""Write daily-run artifacts under strategies/output/<strategy>/<YYYYMMDD>/."""
+"""Write daily-run artifacts under output/<strategy>/<YYYYMMDD>/."""
 
 from __future__ import annotations
 

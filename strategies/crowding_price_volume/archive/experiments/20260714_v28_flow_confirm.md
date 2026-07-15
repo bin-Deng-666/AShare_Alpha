@@ -11,7 +11,7 @@ catalog 此前无北向/两融。按「软确认、不当主开仓」原则接�
 | `northbound_market_daily` | EM `RPT_MUTUAL_DEAL_HISTORY` 005/001/003 | 北向净买（亿元）；**2024-08-19 后 NET 断供为 NaN** |
 | `margin_market_daily` | akshare `stock_margin_sse` | 上交所融资余额等，覆盖至样本末 |
 
-ingest：`a_share_quant_data/scripts/ingest_flow_data.py --catalog`  
+ingest：`data/scripts/ingest_flow_data.py --catalog`  
 面板：`cli/build_v28_cache.py` → `cache/signals_*_v28.parquet`
 
 特征：`nb_weak` / `nb_strong`（z60 或 5 日净买阈值）、`mg_stress`（融资余额 5 日增速 z）。

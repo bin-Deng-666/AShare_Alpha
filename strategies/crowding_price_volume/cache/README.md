@@ -16,4 +16,4 @@
 python3 cli/rebuild_panel_cache.py
 ```
 
-资金流数据需先：`python3 ../../a_share_quant_data/scripts/ingest_flow_data.py --catalog`
+资金流数据需先：`python3 ../../data/scripts/ingest_flow_data.py --catalog`

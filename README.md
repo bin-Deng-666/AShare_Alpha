@@ -7,7 +7,7 @@ Func-Predict/
 ├── utils/                 # 日荐注册 / adapter / 落盘
 ├── output/                # 日荐报告（按执行日）
 ├── strategies/            # 策略文件夹
-└── a_share_quant_data/    # A 股研究数据
+└── data/                  # A 股研究数据
 ```
 
 ## 常用
@@ -24,5 +24,5 @@ python3 run.py crowding_price_volume
 # 默认读 strategies/.../cache/signals_*_v1.0.parquet
 ```
 
-数据细节见 [`a_share_quant_data/README.md`](a_share_quant_data/README.md)。  
+数据细节见 [`data/README.md`](data/README.md)。  
 策略细节见 [`strategies/crowding_price_volume/README.md`](strategies/crowding_price_volume/README.md)。

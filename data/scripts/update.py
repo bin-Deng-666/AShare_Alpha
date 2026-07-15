@@ -11,6 +11,8 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import re
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Set
 
@@ -217,27 +219,36 @@ def update_bars_incremental(
     codes: Optional[Sequence[str]] = None,
     lookback_days: int = 5,
     qfq_refresh_days: int = 60,
+    max_workers: int = 4,
 ) -> Set[str]:
     """Append new raw bars; refresh a qfq lookback window for factor changes."""
     universe = _listed_universe(codes)
     end_date = _target_asof(config)
-    client = Quotes.factory(market="std") if Quotes is not None else None
-    tencent_session = requests.Session()
-    tencent_session.headers.update({"User-Agent": UA})
     tencent_throttle = Throttle(0.12)
     eastmoney_throttle = Throttle(config["eastmoney_min_interval_seconds"])
-    updated: Set[str] = set()
-    failures = []
-    skipped = 0
+    _local = threading.local()
 
-    for index, row in enumerate(universe.itertuples(index=False), start=1):
+    def _session():
+        if not hasattr(_local, "session"):
+            _local.session = requests.Session()
+            _local.session.headers.update({"User-Agent": UA})
+        return _local.session
+
+    def _client():
+        if not hasattr(_local, "client"):
+            _local.client = Quotes.factory(market="std") if Quotes is not None else None
+        return _local.client
+
+    def _process_stock(row) -> tuple[str, bool, int, list]:
         code = str(row.code)
+        stock_updated = False
+        stock_failures: list = []
+        stock_skipped = 0
         for adjustment in config["bar_adjustments"]:
             output = bar_output_path(code, adjustment)
             last = _last_date(output)
-            # Already pulled through last trading day → skip.
             if last is not None and last >= end_date:
-                skipped += 1
+                stock_skipped += 1
                 continue
             if last is None:
                 start = pd.Timestamp(config["start_date"])
@@ -251,31 +262,48 @@ def update_bars_incremental(
                 start = max(start, pd.Timestamp(row.list_date))
             if start > end_date:
                 continue
-            logging.info(
-                "[%s/%s] update bars %s %s from %s",
-                index, len(universe), code, adjustment, start.date(),
-            )
+            logging.info("update bars %s %s from %s", code, adjustment, start.date())
             try:
                 new = _fetch_bars_range(
                     config, code, str(row.exchange), start, end_date, adjustment,
-                    client, tencent_session, tencent_throttle, eastmoney_throttle,
+                    _client(), _session(), tencent_throttle, eastmoney_throttle,
                 )
             except Exception as exc:  # noqa: BLE001
-                failures.append({"code": code, "adjustment": adjustment, "error": str(exc)})
+                stock_failures.append({"code": code, "adjustment": adjustment, "error": str(exc)})
                 continue
             if new.empty:
-                failures.append({"code": code, "adjustment": adjustment, "error": "empty"})
+                stock_failures.append({"code": code, "adjustment": adjustment, "error": "empty"})
                 continue
-            existing = (
-                pd.read_parquet(output) if output.exists() else pd.DataFrame()
-            )
+            existing = pd.read_parquet(output) if output.exists() else pd.DataFrame()
             merged = _merge_by_date(existing, new)
             if existing.empty or len(merged) != len(existing) or (
                 not existing.empty
                 and pd.Timestamp(merged["date"].max()) != pd.Timestamp(existing["date"].max())
             ):
-                updated.add(code)
+                stock_updated = True
             atomic_parquet(merged, output)
+        return code, stock_updated, stock_skipped, stock_failures
+
+    updated: Set[str] = set()
+    failures: list = []
+    skipped = 0
+    total = len(universe)
+    completed = 0
+
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = {
+            pool.submit(_process_stock, row): row
+            for row in universe.itertuples(index=False)
+        }
+        for future in as_completed(futures):
+            completed += 1
+            code, was_updated, n_skipped, stock_failures = future.result()
+            if was_updated:
+                updated.add(code)
+            skipped += n_skipped
+            failures.extend(stock_failures)
+            if completed % 200 == 0:
+                logging.info("bars progress: %s/%s (%s failures so far)", completed, total, len(failures))
 
     atomic_json(
         {
@@ -552,26 +580,32 @@ def update_financials_incremental(
     config: Dict,
     codes: Optional[Sequence[str]] = None,
     periods: int = 12,
+    max_workers: int = 4,
 ) -> Set[str]:
     """Fetch recent statement periods and merge into existing financial files."""
     from build_dataset import deduplicate_financial_frame, fetch_sina_statement
 
     universe = _listed_universe(codes)
-    session = requests.Session()
-    session.headers.update({"User-Agent": UA})
     throttle = Throttle(config["sina_min_interval_seconds"])
-    updated: Set[str] = set()
-    failures = []
-    for index, row in enumerate(universe.itertuples(index=False), start=1):
+    _local = threading.local()
+
+    def _session():
+        if not hasattr(_local, "session"):
+            _local.session = requests.Session()
+            _local.session.headers.update({"User-Agent": UA})
+        return _local.session
+
+    def _process_stock(row) -> tuple[str, bool, list]:
         code = str(row.code)
         output = PARQUET / "financials" / f"{code}.parquet"
-        logging.info("[%s/%s] update financials %s", index, len(universe), code)
+        logging.info("update financials %s", code)
         frames = []
+        stock_failures: list = []
         for report_type in ("fzb", "lrb", "llb"):
             try:
                 frame = retry(
                     lambda rt=report_type: fetch_sina_statement(
-                        session, code, rt, periods, throttle
+                        _session(), code, rt, periods, throttle
                     ),
                     f"Sina {report_type} {code}",
                     attempts=config["retries"],
@@ -579,10 +613,10 @@ def update_financials_incremental(
                 if not frame.empty:
                     frames.append(frame)
             except Exception as exc:  # noqa: BLE001
-                failures.append({"code": code, "type": report_type, "error": str(exc)})
+                stock_failures.append({"code": code, "type": report_type, "error": str(exc)})
         if not frames:
-            failures.append({"code": code, "type": "all", "error": "empty"})
-            continue
+            stock_failures.append({"code": code, "type": "all", "error": "empty"})
+            return code, False, stock_failures
         new = pd.concat(frames, ignore_index=True)
         existing = pd.read_parquet(output) if output.exists() else pd.DataFrame()
         merged, conflicts = deduplicate_financial_frame(
@@ -591,15 +625,35 @@ def update_financials_incremental(
             else new
         )
         atomic_parquet(merged, output)
-        updated.add(code)
         if conflicts:
-            failures.append(
+            stock_failures.append(
                 {
                     "code": code,
                     "type": "duplicate_value_conflicts",
                     "error": str(conflicts),
                 }
             )
+        return code, True, stock_failures
+
+    updated: Set[str] = set()
+    failures: list = []
+    total = len(universe)
+    completed = 0
+
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = {
+            pool.submit(_process_stock, row): row
+            for row in universe.itertuples(index=False)
+        }
+        for future in as_completed(futures):
+            completed += 1
+            code, was_updated, stock_failures = future.result()
+            if was_updated:
+                updated.add(code)
+            failures.extend(stock_failures)
+            if completed % 200 == 0:
+                logging.info("financials progress: %s/%s", completed, total)
+
     atomic_json(
         {
             "updated_codes": sorted(updated),
@@ -619,6 +673,7 @@ def update_announcements_incremental(
     config: Dict,
     codes: Optional[Sequence[str]] = None,
     lookback_days: int = 180,
+    max_workers: int = 4,
 ) -> Set[str]:
     """Refresh recent financial-report announcements and merge by announcement_id."""
     from build_dataset import CNINFO_QUERY_URL, resolve_cninfo_org_id
@@ -626,31 +681,36 @@ def update_announcements_incremental(
     end = pd.Timestamp(config["end_date"] or dt.date.today()).normalize()
     start = end - pd.Timedelta(days=lookback_days)
     universe = _listed_universe(codes)
-    session = requests.Session()
-    session.headers.update(
-        {
-            "User-Agent": UA,
-            "Content-Type": "application/x-www-form-urlencoded",
-            "Referer": "https://www.cninfo.com.cn/new/disclosure",
-            "Origin": "https://www.cninfo.com.cn",
-        }
-    )
     throttle = Throttle(0.8)
-    updated: Set[str] = set()
-    failures = []
-    for index, row in enumerate(universe.itertuples(index=False), start=1):
+    _local = threading.local()
+
+    def _session():
+        if not hasattr(_local, "session"):
+            _local.session = requests.Session()
+            _local.session.headers.update(
+                {
+                    "User-Agent": UA,
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "Referer": "https://www.cninfo.com.cn/new/disclosure",
+                    "Origin": "https://www.cninfo.com.cn",
+                }
+            )
+        return _local.session
+
+    def _process_stock(row) -> tuple[str, bool, list]:
         code = str(row.code)
         output = PARQUET / "announcements" / f"{code}.parquet"
-        logging.info("[%s/%s] update announcements %s", index, len(universe), code)
+        logging.info("update announcements %s", code)
+        stock_failures: list = []
         try:
             org_id = retry(
-                lambda: resolve_cninfo_org_id(session, code, throttle),
+                lambda: resolve_cninfo_org_id(_session(), code, throttle),
                 f"CNInfo orgId {code}",
                 attempts=config["retries"],
             )
         except Exception as exc:  # noqa: BLE001
-            failures.append({"code": code, "error": f"orgId: {exc}"})
-            continue
+            stock_failures.append({"code": code, "error": f"orgId: {exc}"})
+            return code, False, stock_failures
         if not org_id:
             if not output.exists():
                 empty = pd.DataFrame(
@@ -665,8 +725,8 @@ def update_announcements_incremental(
                     ]
                 )
                 atomic_parquet(empty, output)
-            failures.append({"code": code, "error": "orgId: empty"})
-            continue
+            stock_failures.append({"code": code, "error": "orgId: empty"})
+            return code, False, stock_failures
         column = (
             "sse"
             if row.exchange == "SH"
@@ -700,7 +760,7 @@ def update_announcements_incremental(
                 payload["pageNum"] = page_number
                 throttle.wait()
                 response = retry(
-                    lambda: session.post(CNINFO_QUERY_URL, data=payload, timeout=25),
+                    lambda: _session().post(CNINFO_QUERY_URL, data=payload, timeout=25),
                     f"CNInfo announcements {code} page {page_number}",
                     attempts=config["retries"],
                 )
@@ -750,7 +810,7 @@ def update_announcements_incremental(
                         ]
                     )
                     atomic_parquet(empty, output)
-                continue
+                return code, False, stock_failures
             new = pd.DataFrame(rows)
             existing = (
                 pd.read_parquet(output) if output.exists() else pd.DataFrame()
@@ -759,9 +819,30 @@ def update_announcements_incremental(
             merged = merged.drop_duplicates("announcement_id", keep="last")
             merged = merged.sort_values("announcement_date").reset_index(drop=True)
             atomic_parquet(merged, output)
-            updated.add(code)
+            return code, True, stock_failures
         except Exception as exc:  # noqa: BLE001
-            failures.append({"code": code, "error": str(exc)})
+            stock_failures.append({"code": code, "error": str(exc)})
+            return code, False, stock_failures
+
+    updated: Set[str] = set()
+    failures: list = []
+    total = len(universe)
+    completed = 0
+
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = {
+            pool.submit(_process_stock, row): row
+            for row in universe.itertuples(index=False)
+        }
+        for future in as_completed(futures):
+            completed += 1
+            code, was_updated, stock_failures = future.result()
+            if was_updated:
+                updated.add(code)
+            failures.extend(stock_failures)
+            if completed % 200 == 0:
+                logging.info("announcements progress: %s/%s", completed, total)
+
     atomic_json(
         {
             "updated_codes": sorted(updated),
@@ -784,6 +865,7 @@ def run_daily_update(
     skip_warehouse: bool = False,
     skip_slow: bool = False,
     force: bool = False,
+    max_workers: int = 4,
 ) -> dict:
     """One-command refresh to keep the research DB current through today.
 
@@ -879,7 +961,7 @@ def run_daily_update(
 
     # 2) Daily market facts
     logging.info("Step 2/10 bars + indicators")
-    bar_codes = update_bars_incremental(config, codes=codes)
+    bar_codes = update_bars_incremental(config, codes=codes, max_workers=max_workers)
     ind_codes = update_indicators_incremental(config, codes=codes)
 
     listed = _listed_universe(codes)
@@ -892,9 +974,9 @@ def run_daily_update(
         logging.info("Step 4/10 equity structure (force listed)")
         build_equity_structure(config, codes=listed_codes, force=True)
         logging.info("Step 5/10 financials (recent periods merge)")
-        update_financials_incremental(config, codes=listed_codes, periods=12)
+        update_financials_incremental(config, codes=listed_codes, periods=12, max_workers=max_workers)
         logging.info("Step 6/10 announcements (recent window merge)")
-        update_announcements_incremental(config, codes=listed_codes, lookback_days=180)
+        update_announcements_incremental(config, codes=listed_codes, lookback_days=180, max_workers=max_workers)
         logging.info("Step 7/10 financial availability")
         rebuild_financial_availability(config)
     else:

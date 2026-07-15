@@ -17,7 +17,7 @@ from pathlib import Path
 
 STRATEGY_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = STRATEGY_ROOT.parents[1]
-DATA_ROOT = REPO_ROOT / "a_share_quant_data"
+DATA_ROOT = REPO_ROOT / "data"
 CATALOG_PATH = DATA_ROOT / "catalog" / "quant.duckdb"
 CACHE_DIR = STRATEGY_ROOT / "cache"
 REPORT_DIR = STRATEGY_ROOT / "reports"

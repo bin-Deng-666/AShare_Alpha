@@ -12,6 +12,7 @@ Usage (from repo root):
   python3 daily_update.py --data-only       # 只更新库，不重建面板
   python3 daily_update.py --force           # 强制重拉行情
   python3 daily_update.py --force-panel     # 强制重建面板（即使已对齐）
+  python3 daily_update.py --workers 8       # 8 线程并行拉取
 """
 
 from __future__ import annotations
@@ -25,7 +26,7 @@ from pathlib import Path
 import pandas as pd
 
 _REPO = Path(__file__).resolve().parent
-_DATA = _REPO / "a_share_quant_data"
+_DATA = _REPO / "data"
 _BUILD = _DATA / "scripts" / "build_dataset.py"
 _FLOW = _DATA / "scripts" / "ingest_flow_data.py"
 _STRAT = _REPO / "strategies" / "crowding_price_volume"
@@ -183,7 +184,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--data-only",
         action="store_true",
-        help="only update a_share_quant_data (+flow); skip panel rebuild",
+        help="only update data (+flow); skip panel rebuild",
     )
     ap.add_argument(
         "--force",
@@ -200,6 +201,12 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="skip data/flow; only ensure panel is ready for run.py",
     )
+    ap.add_argument(
+        "--workers",
+        type=int,
+        default=4,
+        help="parallel worker threads for bars/financials/announcements (default: 4)",
+    )
     args = ap.parse_args(argv)
 
     if args.panel_only:
@@ -210,7 +217,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     # 1) market data + research layer (skips bar fetch if current; still syncs catalog)
-    cmd = [sys.executable, str(_BUILD), "update-daily"]
+    cmd = [sys.executable, str(_BUILD), "update-daily", "--workers", str(args.workers)]
     if args.skip_slow:
         cmd.append("--skip-slow")
     if args.force:

@@ -21,11 +21,11 @@
 ## 数据组织
 
 ```text
-a_share_quant_data/
+data/
 ├── config/                         抓取范围和限流配置
 ├── scripts/
 │   ├── build_dataset.py            全量构建 / CLI 入口
-│   ├── daily_update.py             盘后增量更新管线
+│   ├── update.py                   盘后增量更新管线
 │   ├── research_layer.py           财务可得日 / warehouse / DuckDB catalog
 │   └── view_data.py                覆盖率与样例查看
 ├── parquet/                        按证券拆分的物理层（断点续传）

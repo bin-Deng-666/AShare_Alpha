@@ -193,7 +193,7 @@ def show_file(file_name: str, rows: int) -> None:
     try:
         path.relative_to(ROOT.resolve())
     except ValueError:
-        raise SystemExit("只能查看 a_share_quant_data 目录内的文件")
+        raise SystemExit("只能查看 data 目录内的文件")
     if not path.exists() or not path.is_file():
         raise SystemExit(f"文件不存在：{path}")
 

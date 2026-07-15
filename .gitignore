@@ -15,14 +15,14 @@ output/
 strategies/**/output/
 
 # A-share research data warehouse (keep code/config/docs only)
-a_share_quant_data/parquet/
-a_share_quant_data/warehouse/
-a_share_quant_data/catalog/
-a_share_quant_data/logs/
-a_share_quant_data/state/
-a_share_quant_data/raw/
-a_share_quant_data/**/*.duckdb
-a_share_quant_data/**/*.duckdb.wal
+data/parquet/
+data/warehouse/
+data/catalog/
+data/logs/
+data/state/
+data/raw/
+data/**/*.duckdb
+data/**/*.duckdb.wal
 
 # Strategy signal / feature caches
 **/*.parquet

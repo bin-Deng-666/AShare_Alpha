@@ -20,9 +20,11 @@ import logging
 import random
 import re
 import sys
+import threading
 import time
 import urllib.request
 from bisect import bisect_right
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import StringIO
 from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple
@@ -120,12 +122,14 @@ class Throttle:
     def __init__(self, min_interval: float):
         self.min_interval = min_interval
         self.last_call = 0.0
+        self._lock = threading.Lock()
 
     def wait(self) -> None:
-        remaining = self.min_interval - (time.time() - self.last_call)
-        if remaining > 0:
-            time.sleep(remaining + random.uniform(0.05, 0.2))
-        self.last_call = time.time()
+        with self._lock:
+            remaining = self.min_interval - (time.time() - self.last_call)
+            if remaining > 0:
+                time.sleep(remaining + random.uniform(0.05, 0.2))
+            self.last_call = time.time()
 
 
 def exchange_for(code: str) -> str:
@@ -2747,6 +2751,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="For update-daily: skip corporate/equity/financials/announcements",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=4,
+        help="Parallel worker threads for update-daily bars/financials/announcements (default: 4)",
+    )
     return parser.parse_args()
 
 
@@ -2804,10 +2814,11 @@ def main() -> None:
 
         build_catalog(config)
     if args.command == "update-daily":
-        from daily_update import run_daily_update
+        from update import run_daily_update
 
         run_daily_update(
-            config, codes=args.codes, skip_slow=args.skip_slow, force=args.force
+            config, codes=args.codes, skip_slow=args.skip_slow,
+            force=args.force, max_workers=args.workers,
         )
     if args.command in ("reference", "all"):
         build_reference_data(config)

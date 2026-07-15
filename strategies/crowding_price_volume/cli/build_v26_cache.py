@@ -9,7 +9,7 @@ import duckdb
 
 ROOT = Path(__file__).resolve().parents[1]
 REPO = ROOT.parents[1]
-CATALOG = REPO / "a_share_quant_data" / "catalog" / "quant.duckdb"
+CATALOG = REPO / "data" / "catalog" / "quant.duckdb"
 SRC_DEFAULT = ROOT / "cache" / "signals_2020-01-01_sota.parquet"
 OUT_DEFAULT = ROOT / "cache" / "signals_2020-01-01_v26.parquet"
 

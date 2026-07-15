@@ -54,4 +54,4 @@ python3 cli/archive_versions.py --version v1.0 --sync-latest
 
 仓库根日荐：`python3 run.py crowding_price_volume`（同样默认 v1.0 面板）。
 
-数据入口：`a_share_quant_data/catalog/quant.duckdb`。
+数据入口：`data/catalog/quant.duckdb`。

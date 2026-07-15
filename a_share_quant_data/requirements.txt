@@ -1,0 +1,7 @@
+akshare
+baostock>=0.9.3
+mootdx>=0.10
+pandas
+pyarrow
+requests
+duckdb>=1.0

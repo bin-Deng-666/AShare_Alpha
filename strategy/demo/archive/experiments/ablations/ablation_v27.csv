@@ -1,0 +1,6 @@
+variant,ret,sharpe,dd,note
+v2.6,1.073,0.908,-0.196,baseline_limit_crowd
+earn_exact,1.063,0.920,-0.196,blackout_exact
+hs_boost,1.113,0.917,-0.197,hs300_x1.15_only
+earn+hs_boost,1.097,0.928,-0.197,v2.7_default
+tier_cut_other,0.973,0.849,-0.221,rejected

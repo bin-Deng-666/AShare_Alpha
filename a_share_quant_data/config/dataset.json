@@ -1,0 +1,13 @@
+{
+  "start_date": "2010-01-01",
+  "end_date": null,
+  "bar_adjustments": ["raw", "qfq"],
+  "bar_page_size": 800,
+  "retries": 3,
+  "retry_base_seconds": 1.0,
+  "eastmoney_min_interval_seconds": 1.2,
+  "sina_min_interval_seconds": 0.25,
+  "financial_periods": 80,
+  "include_current": true,
+  "include_delisted": true
+}

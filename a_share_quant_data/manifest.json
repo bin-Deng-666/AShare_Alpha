@@ -1,0 +1,20 @@
+{
+  "generated_at": "2026-07-13 09:06:23.755851",
+  "configured_start_date": "2010-01-01",
+  "configured_end_date": "2026-07-13",
+  "security_count": 5859,
+  "listed_count": 5529,
+  "delisted_count": 330,
+  "bar_files": 11615,
+  "financial_files": 5859,
+  "announcement_files": 5764,
+  "corporate_action_files": 5859,
+  "snapshot_files": 1,
+  "limitations": [
+    "Historical universe is best-effort; free exchange lists may omit renamed or migrated securities.",
+    "Forward-adjusted prices are snapshots and can change after future corporate actions.",
+    "Tencent valuation fields are current snapshots and must not be used in historical backtests.",
+    "Sina statements are aligned to CNInfo announcement dates only approximately; revisions are not versioned.",
+    "Beijing and delisted bars may use the rate-limited Eastmoney fallback."
+  ]
+}

@@ -1,0 +1,71 @@
+{
+  "generated_at": "2026-07-13 13:58:30.054811",
+  "security_count": 5792,
+  "listed_missing_list_date": 0,
+  "coverage": {
+    "raw_bars": {
+      "files": 5792,
+      "missing_master_codes": 0
+    },
+    "qfq_bars": {
+      "files": 5792,
+      "missing_master_codes": 0
+    },
+    "daily_indicators": {
+      "files": 5792
+    },
+    "financials": {
+      "files": 5792
+    },
+    "announcements": {
+      "files": 5792
+    },
+    "corporate_actions": {
+      "files": 5792
+    },
+    "equity_structure": {
+      "files": 5792
+    },
+    "shares_daily": {
+      "files": 5792,
+      "with_float_shares": 5792
+    },
+    "limit_prices": {
+      "files": 5792
+    }
+  },
+  "raw_bar_row_count": 14033777,
+  "qfq_bar_row_count": 14033777,
+  "bar_min_date": "2010-01-04 00:00:00",
+  "bar_max_date": "2026-07-10 00:00:00",
+  "invalid_ohlc_rows": 0,
+  "duplicate_bar_keys": 0,
+  "qfq_date_mismatch_count": 0,
+  "qfq_date_mismatch_sample": [],
+  "financial_duplicate_rows": 0,
+  "financial_conflicting_keys": 0,
+  "duplicate_announcements": 0,
+  "financial_availability_quality": {
+    "exact": 205082,
+    "statutory_deadline": 62421,
+    "out_of_scope": 30163,
+    "conservative_revision": 9404,
+    "heuristic_multiple": 476
+  },
+  "interval_checks": {
+    "industry": {
+      "rows": 16937,
+      "duplicate_keys": 0,
+      "invalid_ranges": 0,
+      "overlaps": 0
+    },
+    "index_constituent": {
+      "rows": 2957,
+      "duplicate_keys": 0,
+      "invalid_ranges": 0,
+      "overlaps": 0
+    }
+  },
+  "issues": [],
+  "status": "pass"
+}

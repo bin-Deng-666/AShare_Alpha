@@ -1,0 +1,10 @@
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Signal / feature cache (large)
+cache/*
+!cache/README.md
+
+# OS
+.DS_Store

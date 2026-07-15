@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.venv_pdf/
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+
+# Runtime / local outputs
+output/
+strategies/**/output/
+
+# A-share research data warehouse (keep code/config/docs only)
+a_share_quant_data/parquet/
+a_share_quant_data/warehouse/
+a_share_quant_data/catalog/
+a_share_quant_data/logs/
+a_share_quant_data/state/
+a_share_quant_data/raw/
+a_share_quant_data/**/*.duckdb
+a_share_quant_data/**/*.duckdb.wal
+
+# Strategy signal / feature caches
+**/*.parquet
+strategies/**/cache/*
+!strategies/**/cache/README.md

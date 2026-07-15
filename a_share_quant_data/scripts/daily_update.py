@@ -1,0 +1,978 @@
+#!/usr/bin/env python3
+"""Incremental daily updater for the A-share research dataset.
+
+Unlike the initial builders (which skip any existing per-code file), this module
+extends history from each file's last date to today, refreshes a short lookback
+window for adjustable series, then rebuilds derived layers and the research
+warehouse year partitions.
+"""
+from __future__ import annotations
+
+import datetime as dt
+import logging
+import re
+from pathlib import Path
+from typing import Dict, List, Optional, Sequence, Set
+
+import pandas as pd
+import requests
+
+try:
+    from mootdx.quotes import Quotes
+except ImportError:  # pragma: no cover
+    Quotes = None
+
+try:
+    import baostock as bs
+except ImportError:  # pragma: no cover
+    bs = None
+
+from build_dataset import (
+    PARQUET,
+    ROOT,
+    STATE,
+    Throttle,
+    UA,
+    atomic_json,
+    atomic_parquet,
+    baostock_frame,
+    bar_output_path,
+    build_bj_daily_indicators,
+    build_limit_prices,
+    build_shares_daily,
+    build_snapshot,
+    fetch_akshare_history,
+    fetch_tdx_history,
+    fetch_tencent_history,
+    load_config,
+    retry,
+    setup_logging,
+    validate_dataset,
+)
+
+
+def _listed_universe(codes: Optional[Sequence[str]] = None) -> pd.DataFrame:
+    master = pd.read_parquet(PARQUET / "security_master" / "security_master.parquet")
+    universe = master[master["status"].eq("listed")].copy()
+    if codes:
+        universe = universe[universe["code"].isin(set(codes))]
+    return universe.sort_values(["exchange", "code"]).reset_index(drop=True)
+
+
+def _merge_by_date(existing: pd.DataFrame, new: pd.DataFrame) -> pd.DataFrame:
+    if existing.empty:
+        return new.copy()
+    if new.empty:
+        return existing.copy()
+    frame = pd.concat([existing, new], ignore_index=True)
+    frame["date"] = pd.to_datetime(frame["date"]).dt.normalize()
+    return (
+        frame.drop_duplicates("date", keep="last")
+        .sort_values("date")
+        .reset_index(drop=True)
+    )
+
+
+def _last_date(path: Path) -> Optional[pd.Timestamp]:
+    if not path.exists():
+        return None
+    dates = pd.to_datetime(pd.read_parquet(path, columns=["date"])["date"], errors="coerce")
+    if dates.dropna().empty:
+        return None
+    return pd.Timestamp(dates.max()).normalize()
+
+
+def _target_asof(config: Dict) -> pd.Timestamp:
+    """Latest trading day on/before configured end (default: today).
+
+    Weekend/holiday re-runs must not treat calendar today as a missing bar day.
+    """
+    today = pd.Timestamp(config.get("end_date") or dt.date.today()).normalize()
+    cal_path = PARQUET / "reference" / "trade_calendar.parquet"
+    if cal_path.exists():
+        cal = pd.read_parquet(cal_path, columns=["calendar_date", "is_trading_day"])
+        days = pd.to_datetime(
+            cal.loc[cal["is_trading_day"].astype(int).eq(1), "calendar_date"],
+            errors="coerce",
+        ).dropna()
+        days = days[days <= today]
+        if len(days):
+            return pd.Timestamp(days.max()).normalize()
+    return today
+
+
+def _bars_already_at(
+    asof: pd.Timestamp,
+    sample_codes: Sequence[str] = ("000001", "600519", "300750"),
+) -> bool:
+    """Fast probe: liquid names already have bars through ``asof``."""
+    for code in sample_codes:
+        last = _last_date(bar_output_path(str(code), "qfq"))
+        if last is None or last < asof:
+            return False
+    return True
+
+
+def _stock_daily_asof() -> Optional[pd.Timestamp]:
+    """Max date in warehouse stock_daily (what the strategy catalog reads)."""
+    try:
+        import duckdb
+        from research_layer import WAREHOUSE
+    except Exception:  # noqa: BLE001
+        return None
+    root = WAREHOUSE / "stock_daily"
+    files = list(root.rglob("*.parquet"))
+    if not files:
+        return None
+    try:
+        con = duckdb.connect()
+        try:
+            glob = root.as_posix() + "/**/*.parquet"
+            row = con.execute(
+                f"""
+                SELECT max(CAST(date AS DATE))
+                FROM read_parquet('{glob}', hive_partitioning=true, union_by_name=true)
+                """
+            ).fetchone()
+        finally:
+            con.close()
+    except Exception:  # noqa: BLE001
+        return None
+    if not row or row[0] is None:
+        return None
+    return pd.Timestamp(row[0]).normalize()
+
+
+def _sync_research_layer_for_asof(config: Dict, end_date: pd.Timestamp) -> None:
+    """Refresh warehouse + catalog when bars are current but stock_daily lags.
+
+    Shares/limits may lag a few days; stock_daily uses ASOF carry-forward so
+    the latest bar date still gets float_mcap / limit fields.
+    """
+    from research_layer import build_catalog
+
+    print(
+        f"Research sync → {end_date.date()}: warehouse (from parquet) + catalog",
+        flush=True,
+    )
+    cfg = dict(config)
+    cfg["end_date"] = str(end_date.date())
+    update_warehouse_current_year(cfg)
+    build_catalog(cfg)
+    print(f"Research sync done; stock_daily asof → {_stock_daily_asof()}", flush=True)
+
+def _fetch_bars_range(
+    config: Dict,
+    code: str,
+    exchange: str,
+    start: pd.Timestamp,
+    end: pd.Timestamp,
+    adjustment: str,
+    client,
+    tencent_session: requests.Session,
+    tencent_throttle: Throttle,
+    eastmoney_throttle: Throttle,
+) -> pd.DataFrame:
+    frame = pd.DataFrame()
+    try:
+        frame = retry(
+            lambda: fetch_tencent_history(
+                tencent_session, code, start, end, adjustment, tencent_throttle,
+            ),
+            f"Tencent bars {code} {adjustment}",
+            attempts=config["retries"],
+            base_sleep=config["retry_base_seconds"],
+        )
+    except Exception as exc:  # noqa: BLE001
+        logging.warning("Tencent unavailable for %s: %s", code, exc)
+    if frame.empty and client is not None and exchange in ("SH", "SZ"):
+        try:
+            frame = retry(
+                lambda: fetch_tdx_history(
+                    client, code, start, end, adjustment, config["bar_page_size"],
+                ),
+                f"mootdx bars {code} {adjustment}",
+                attempts=config["retries"],
+                base_sleep=config["retry_base_seconds"],
+            )
+        except Exception as exc:  # noqa: BLE001
+            logging.warning("mootdx unavailable for %s: %s", code, exc)
+    if frame.empty:
+        try:
+            frame = retry(
+                lambda: fetch_akshare_history(
+                    code, start, end, adjustment, eastmoney_throttle,
+                ),
+                f"fallback bars {code} {adjustment}",
+                attempts=config["retries"],
+                base_sleep=config["retry_base_seconds"],
+            )
+        except Exception as exc:  # noqa: BLE001
+            logging.warning("fallback unavailable for %s: %s", code, exc)
+    return frame
+
+
+def update_bars_incremental(
+    config: Dict,
+    codes: Optional[Sequence[str]] = None,
+    lookback_days: int = 5,
+    qfq_refresh_days: int = 60,
+) -> Set[str]:
+    """Append new raw bars; refresh a qfq lookback window for factor changes."""
+    universe = _listed_universe(codes)
+    end_date = _target_asof(config)
+    client = Quotes.factory(market="std") if Quotes is not None else None
+    tencent_session = requests.Session()
+    tencent_session.headers.update({"User-Agent": UA})
+    tencent_throttle = Throttle(0.12)
+    eastmoney_throttle = Throttle(config["eastmoney_min_interval_seconds"])
+    updated: Set[str] = set()
+    failures = []
+    skipped = 0
+
+    for index, row in enumerate(universe.itertuples(index=False), start=1):
+        code = str(row.code)
+        for adjustment in config["bar_adjustments"]:
+            output = bar_output_path(code, adjustment)
+            last = _last_date(output)
+            # Already pulled through last trading day → skip.
+            if last is not None and last >= end_date:
+                skipped += 1
+                continue
+            if last is None:
+                start = pd.Timestamp(config["start_date"])
+                if pd.notna(row.list_date):
+                    start = max(start, pd.Timestamp(row.list_date))
+            elif adjustment == "qfq":
+                start = last - pd.Timedelta(days=qfq_refresh_days)
+            else:
+                start = last - pd.Timedelta(days=lookback_days)
+            if pd.notna(row.list_date):
+                start = max(start, pd.Timestamp(row.list_date))
+            if start > end_date:
+                continue
+            logging.info(
+                "[%s/%s] update bars %s %s from %s",
+                index, len(universe), code, adjustment, start.date(),
+            )
+            try:
+                new = _fetch_bars_range(
+                    config, code, str(row.exchange), start, end_date, adjustment,
+                    client, tencent_session, tencent_throttle, eastmoney_throttle,
+                )
+            except Exception as exc:  # noqa: BLE001
+                failures.append({"code": code, "adjustment": adjustment, "error": str(exc)})
+                continue
+            if new.empty:
+                failures.append({"code": code, "adjustment": adjustment, "error": "empty"})
+                continue
+            existing = (
+                pd.read_parquet(output) if output.exists() else pd.DataFrame()
+            )
+            merged = _merge_by_date(existing, new)
+            if existing.empty or len(merged) != len(existing) or (
+                not existing.empty
+                and pd.Timestamp(merged["date"].max()) != pd.Timestamp(existing["date"].max())
+            ):
+                updated.add(code)
+            atomic_parquet(merged, output)
+
+    atomic_json(
+        {
+            "updated_codes": sorted(updated),
+            "failures": failures,
+            "end_date": str(end_date.date()),
+            "updated_at": dt.datetime.now(),
+        },
+        STATE / "daily_bar_update.json",
+    )
+    logging.info(
+        "Bar incremental update: %s codes touched, %s skipped (already current), %s failures",
+        len(updated),
+        skipped,
+        len(failures),
+    )
+    return updated
+
+
+def update_indicators_incremental(
+    config: Dict,
+    codes: Optional[Sequence[str]] = None,
+    lookback_days: int = 5,
+) -> Set[str]:
+    """Extend BaoStock daily indicators for SH/SZ listed names."""
+    if bs is None:
+        raise RuntimeError("baostock is required; install requirements.txt")
+    universe = _listed_universe(codes)
+    universe = universe[universe["exchange"].isin(["SH", "SZ"])].copy()
+    end_date = _target_asof(config)
+    fields = (
+        "date,code,turn,tradestatus,pctChg,peTTM,pbMRQ,"
+        "psTTM,pcfNcfTTM,isST"
+    )
+    login = bs.login()
+    if login.error_code != "0":
+        raise RuntimeError(f"BaoStock login failed: {login.error_msg}")
+    updated: Set[str] = set()
+    failures = []
+    skipped = 0
+    try:
+        for index, row in enumerate(universe.itertuples(index=False), start=1):
+            if index > 1 and (index - 1) % 250 == 0:
+                bs.logout()
+                login = bs.login()
+                if login.error_code != "0":
+                    raise RuntimeError(f"BaoStock re-login failed: {login.error_msg}")
+            code = str(row.code)
+            output = PARQUET / "daily_indicators" / f"{code}.parquet"
+            last = _last_date(output)
+            if last is not None and last >= end_date:
+                skipped += 1
+                continue
+            start = (
+                (last - pd.Timedelta(days=lookback_days))
+                if last is not None
+                else pd.Timestamp(config["start_date"])
+            )
+            if pd.notna(row.list_date):
+                start = max(start, pd.Timestamp(row.list_date))
+            if start > end_date:
+                continue
+            logging.info("[%s/%s] update indicators %s", index, len(universe), code)
+            prefix = "sh" if row.exchange == "SH" else "sz"
+
+            def query():
+                return bs.query_history_k_data_plus(
+                    f"{prefix}.{code}",
+                    fields,
+                    start_date=start.strftime("%Y-%m-%d"),
+                    end_date=end_date.strftime("%Y-%m-%d"),
+                    frequency="d",
+                    adjustflag="3",
+                )
+
+            try:
+                result = query()
+                if result.error_code == "10001001":
+                    login = bs.login()
+                    result = query()
+                frame = baostock_frame(result)
+                if frame.empty:
+                    failures.append({"code": code, "error": "empty"})
+                    continue
+                frame["date"] = pd.to_datetime(frame["date"], errors="coerce")
+                frame["code"] = code
+                for column in ("turn", "pctChg", "peTTM", "pbMRQ", "psTTM", "pcfNcfTTM"):
+                    frame[column] = pd.to_numeric(frame[column], errors="coerce")
+                for column in ("tradestatus", "isST"):
+                    frame[column] = pd.to_numeric(frame[column], errors="coerce").astype("Int8")
+                frame["source"] = "baostock"
+                existing = (
+                    pd.read_parquet(output) if output.exists() else pd.DataFrame()
+                )
+                merged = _merge_by_date(existing, frame)
+                atomic_parquet(merged, output)
+                updated.add(code)
+            except Exception as exc:  # noqa: BLE001
+                failures.append({"code": code, "error": str(exc)})
+    finally:
+        bs.logout()
+    atomic_json(
+        {
+            "updated_codes": sorted(updated),
+            "failures": failures,
+            "updated_at": dt.datetime.now(),
+        },
+        STATE / "daily_indicator_update.json",
+    )
+    logging.info(
+        "Indicator incremental update: %s codes, %s skipped (already current), %s failures",
+        len(updated),
+        skipped,
+        len(failures),
+    )
+    return updated
+
+
+def refresh_trade_calendar(config: Dict) -> None:
+    if bs is None:
+        raise RuntimeError("baostock is required; install requirements.txt")
+    start_date = pd.Timestamp(config["start_date"])
+    end_date = pd.Timestamp(config["end_date"] or dt.date.today())
+    login = bs.login()
+    if login.error_code != "0":
+        raise RuntimeError(f"BaoStock login failed: {login.error_msg}")
+    try:
+        calendar = baostock_frame(
+            bs.query_trade_dates(
+                start_date=start_date.strftime("%Y-%m-%d"),
+                end_date=end_date.strftime("%Y-%m-%d"),
+            )
+        )
+        calendar["calendar_date"] = pd.to_datetime(calendar["calendar_date"])
+        calendar["is_trading_day"] = pd.to_numeric(
+            calendar["is_trading_day"], errors="coerce"
+        ).astype("Int8")
+        atomic_parquet(calendar, PARQUET / "reference" / "trade_calendar.parquet")
+    finally:
+        bs.logout()
+    logging.info("Trade calendar refreshed through %s", end_date.date())
+
+
+def update_warehouse_current_year(config: Dict) -> None:
+    """Rewrite only the current-year warehouse partitions + stock_daily year."""
+    try:
+        import duckdb
+    except ImportError as exc:  # pragma: no cover
+        raise RuntimeError("duckdb is required for warehouse update") from exc
+
+    year = pd.Timestamp(config["end_date"] or dt.date.today()).year
+    con = duckdb.connect()
+    try:
+        from research_layer import WAREHOUSE
+
+        jobs = [
+            ("daily_bars_qfq", str(PARQUET / "daily_bars" / "adjustment=qfq" / "*.parquet"), True),
+            ("daily_bars_raw", str(PARQUET / "daily_bars" / "adjustment=raw" / "*.parquet"), True),
+            ("daily_indicators", str(PARQUET / "daily_indicators" / "*.parquet"), False),
+            ("shares_daily", str(PARQUET / "shares_daily" / "*.parquet"), False),
+            ("limit_prices", str(PARQUET / "limit_prices" / "*.parquet"), False),
+        ]
+        for name, pattern, has_exchange in jobs:
+            target = WAREHOUSE / name
+            target.mkdir(parents=True, exist_ok=True)
+            # Remove current-year partitions then rewrite.
+            for path in target.glob(f"year={year}"):
+                import shutil
+
+                if path.is_dir():
+                    shutil.rmtree(path)
+            if has_exchange:
+                exchange_expr = "CAST(exchange AS VARCHAR)"
+                cols = "code, date, exchange, open, high, low, close, volume, amount, source"
+            else:
+                exchange_expr = """
+                    CASE
+                      WHEN CAST(code AS VARCHAR) LIKE '92%'
+                        OR CAST(code AS VARCHAR) LIKE '8%'
+                        OR CAST(code AS VARCHAR) LIKE '4%' THEN 'BJ'
+                      WHEN CAST(code AS VARCHAR) LIKE '6%' THEN 'SH'
+                      ELSE 'SZ'
+                    END
+                """
+                if name == "daily_indicators":
+                    cols = "code, date, turn, tradestatus, pctChg, peTTM, pbMRQ, psTTM, pcfNcfTTM, isST, source"
+                elif name == "shares_daily":
+                    cols = "code, date, total_shares, float_shares, total_market_cap, float_market_cap, source"
+                else:
+                    cols = "code, date, prev_close, close, limit_up, limit_down, limit_pct, is_limit_up, is_limit_down, source"
+            logging.info("warehouse refreshing %s year=%s", name, year)
+            con.execute(
+                f"""
+                COPY (
+                  SELECT
+                    {cols},
+                    year(CAST(date AS DATE)) AS year,
+                    {exchange_expr} AS exchange_part
+                  FROM read_parquet('{pattern}', union_by_name=true)
+                  WHERE year(CAST(date AS DATE)) = {year}
+                )
+                TO '{target.as_posix()}'
+                (FORMAT PARQUET, PARTITION_BY (year, exchange_part), OVERWRITE_OR_IGNORE)
+                """
+            )
+
+        panel = WAREHOUSE / "stock_daily"
+        panel.mkdir(parents=True, exist_ok=True)
+        for path in panel.glob(f"year={year}"):
+            import shutil
+
+            if path.is_dir():
+                shutil.rmtree(path)
+        logging.info("warehouse refreshing stock_daily year=%s", year)
+        # ASOF joins: shares / limits may lag a few sessions; carry last known
+        # row forward so stock_daily still covers the latest bar date.
+        con.execute(
+            f"""
+            COPY (
+              SELECT
+                b.code,
+                CAST(b.date AS DATE) AS date,
+                b.exchange,
+                b.open, b.high, b.low, b.close, b.volume, b.amount,
+                i.turn AS turnover_pct,
+                CAST(i.tradestatus AS BOOLEAN) AS trade_status,
+                i.pctChg AS pct_change,
+                i.peTTM AS pe_ttm,
+                i.pbMRQ AS pb_mrq,
+                i.psTTM AS ps_ttm,
+                i.pcfNcfTTM AS pcf_ncf_ttm,
+                CAST(i.isST AS BOOLEAN) AS is_st,
+                s.total_shares,
+                s.float_shares,
+                s.total_market_cap,
+                s.float_market_cap,
+                l.limit_up,
+                l.limit_down,
+                l.limit_pct,
+                l.is_limit_up,
+                l.is_limit_down,
+                year(CAST(b.date AS DATE)) AS year,
+                b.exchange AS exchange_part
+              FROM (
+                SELECT *
+                FROM read_parquet('{(WAREHOUSE / "daily_bars_qfq").as_posix()}/**/*.parquet', hive_partitioning=true, union_by_name=true)
+                WHERE year(CAST(date AS DATE)) = {year}
+              ) b
+              LEFT JOIN read_parquet('{(WAREHOUSE / "daily_indicators").as_posix()}/**/*.parquet', hive_partitioning=true, union_by_name=true) i
+                ON b.code = i.code AND CAST(b.date AS DATE) = CAST(i.date AS DATE)
+              ASOF LEFT JOIN (
+                SELECT code, CAST(date AS DATE) AS date,
+                       total_shares, float_shares, total_market_cap, float_market_cap
+                FROM read_parquet('{(WAREHOUSE / "shares_daily").as_posix()}/**/*.parquet', hive_partitioning=true, union_by_name=true)
+              ) s
+                ON b.code = s.code AND CAST(b.date AS DATE) >= s.date
+              ASOF LEFT JOIN (
+                SELECT code, CAST(date AS DATE) AS date,
+                       limit_up, limit_down, limit_pct, is_limit_up, is_limit_down
+                FROM read_parquet('{(WAREHOUSE / "limit_prices").as_posix()}/**/*.parquet', hive_partitioning=true, union_by_name=true)
+              ) l
+                ON b.code = l.code AND CAST(b.date AS DATE) >= l.date
+            )
+            TO '{panel.as_posix()}'
+            (FORMAT PARQUET, PARTITION_BY (year, exchange_part), OVERWRITE_OR_IGNORE)
+            """
+        )
+    finally:
+        con.close()
+    logging.info("Warehouse current-year refresh done")
+
+
+def update_financials_incremental(
+    config: Dict,
+    codes: Optional[Sequence[str]] = None,
+    periods: int = 12,
+) -> Set[str]:
+    """Fetch recent statement periods and merge into existing financial files."""
+    from build_dataset import deduplicate_financial_frame, fetch_sina_statement
+
+    universe = _listed_universe(codes)
+    session = requests.Session()
+    session.headers.update({"User-Agent": UA})
+    throttle = Throttle(config["sina_min_interval_seconds"])
+    updated: Set[str] = set()
+    failures = []
+    for index, row in enumerate(universe.itertuples(index=False), start=1):
+        code = str(row.code)
+        output = PARQUET / "financials" / f"{code}.parquet"
+        logging.info("[%s/%s] update financials %s", index, len(universe), code)
+        frames = []
+        for report_type in ("fzb", "lrb", "llb"):
+            try:
+                frame = retry(
+                    lambda rt=report_type: fetch_sina_statement(
+                        session, code, rt, periods, throttle
+                    ),
+                    f"Sina {report_type} {code}",
+                    attempts=config["retries"],
+                )
+                if not frame.empty:
+                    frames.append(frame)
+            except Exception as exc:  # noqa: BLE001
+                failures.append({"code": code, "type": report_type, "error": str(exc)})
+        if not frames:
+            failures.append({"code": code, "type": "all", "error": "empty"})
+            continue
+        new = pd.concat(frames, ignore_index=True)
+        existing = pd.read_parquet(output) if output.exists() else pd.DataFrame()
+        merged, conflicts = deduplicate_financial_frame(
+            pd.concat([existing, new], ignore_index=True)
+            if not existing.empty
+            else new
+        )
+        atomic_parquet(merged, output)
+        updated.add(code)
+        if conflicts:
+            failures.append(
+                {
+                    "code": code,
+                    "type": "duplicate_value_conflicts",
+                    "error": str(conflicts),
+                }
+            )
+    atomic_json(
+        {
+            "updated_codes": sorted(updated),
+            "failures": failures,
+            "updated_at": dt.datetime.now(),
+        },
+        STATE / "daily_financial_update.json",
+    )
+    logging.info(
+        "Financial incremental update: %s codes, %s failures",
+        len(updated), len(failures),
+    )
+    return updated
+
+
+def update_announcements_incremental(
+    config: Dict,
+    codes: Optional[Sequence[str]] = None,
+    lookback_days: int = 180,
+) -> Set[str]:
+    """Refresh recent financial-report announcements and merge by announcement_id."""
+    from build_dataset import CNINFO_QUERY_URL, resolve_cninfo_org_id
+
+    end = pd.Timestamp(config["end_date"] or dt.date.today()).normalize()
+    start = end - pd.Timedelta(days=lookback_days)
+    universe = _listed_universe(codes)
+    session = requests.Session()
+    session.headers.update(
+        {
+            "User-Agent": UA,
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Referer": "https://www.cninfo.com.cn/new/disclosure",
+            "Origin": "https://www.cninfo.com.cn",
+        }
+    )
+    throttle = Throttle(0.8)
+    updated: Set[str] = set()
+    failures = []
+    for index, row in enumerate(universe.itertuples(index=False), start=1):
+        code = str(row.code)
+        output = PARQUET / "announcements" / f"{code}.parquet"
+        logging.info("[%s/%s] update announcements %s", index, len(universe), code)
+        try:
+            org_id = retry(
+                lambda: resolve_cninfo_org_id(session, code, throttle),
+                f"CNInfo orgId {code}",
+                attempts=config["retries"],
+            )
+        except Exception as exc:  # noqa: BLE001
+            failures.append({"code": code, "error": f"orgId: {exc}"})
+            continue
+        if not org_id:
+            if not output.exists():
+                empty = pd.DataFrame(
+                    columns=[
+                        "code",
+                        "announcement_id",
+                        "announcement_date",
+                        "title",
+                        "category",
+                        "adjunct_url",
+                        "source",
+                    ]
+                )
+                atomic_parquet(empty, output)
+            failures.append({"code": code, "error": "orgId: empty"})
+            continue
+        column = (
+            "sse"
+            if row.exchange == "SH"
+            else ("third" if row.exchange == "BJ" else "szse")
+        )
+        plate = (
+            "sh" if row.exchange == "SH" else ("bj" if row.exchange == "BJ" else "sz")
+        )
+        payload = {
+            "stock": f"{code},{org_id}",
+            "tabName": "fulltext",
+            "pageSize": 30,
+            "pageNum": 1,
+            "column": column,
+            "category": (
+                "category_ndbg_szsh;category_bndbg_szsh;"
+                "category_yjdbg_szsh;category_sjdbg_szsh"
+            ),
+            "plate": plate,
+            "seDate": f"{start.date()}~{end.date()}",
+            "searchkey": "",
+            "secid": "",
+            "sortName": "",
+            "sortType": "",
+            "isHLtitle": "true",
+        }
+        try:
+            rows = []
+            page_number = 1
+            while True:
+                payload["pageNum"] = page_number
+                throttle.wait()
+                response = retry(
+                    lambda: session.post(CNINFO_QUERY_URL, data=payload, timeout=25),
+                    f"CNInfo announcements {code} page {page_number}",
+                    attempts=config["retries"],
+                )
+                response.raise_for_status()
+                data = response.json()
+                items = data.get("announcements", []) or []
+                for item in items:
+                    timestamp = item.get("announcementTime")
+                    announcement_date = pd.to_datetime(
+                        timestamp, unit="ms", errors="coerce", utc=True
+                    )
+                    if pd.notna(announcement_date):
+                        announcement_date = (
+                            announcement_date.tz_convert("Asia/Shanghai")
+                            .normalize()
+                            .tz_localize(None)
+                        )
+                    rows.append(
+                        {
+                            "code": code,
+                            "announcement_id": item.get("announcementId"),
+                            "announcement_date": announcement_date,
+                            "title": re.sub(
+                                r"<[^>]+>", "", item.get("announcementTitle", "")
+                            ),
+                            "category": item.get("announcementTypeName", ""),
+                            "adjunct_url": item.get("adjunctUrl", ""),
+                            "source": "cninfo",
+                        }
+                    )
+                if not items or not data.get("hasMore", False):
+                    break
+                page_number += 1
+                if page_number > 20:
+                    break
+            if not rows:
+                if not output.exists():
+                    empty = pd.DataFrame(
+                        columns=[
+                            "code",
+                            "announcement_id",
+                            "announcement_date",
+                            "title",
+                            "category",
+                            "adjunct_url",
+                            "source",
+                        ]
+                    )
+                    atomic_parquet(empty, output)
+                continue
+            new = pd.DataFrame(rows)
+            existing = (
+                pd.read_parquet(output) if output.exists() else pd.DataFrame()
+            )
+            merged = pd.concat([existing, new], ignore_index=True)
+            merged = merged.drop_duplicates("announcement_id", keep="last")
+            merged = merged.sort_values("announcement_date").reset_index(drop=True)
+            atomic_parquet(merged, output)
+            updated.add(code)
+        except Exception as exc:  # noqa: BLE001
+            failures.append({"code": code, "error": str(exc)})
+    atomic_json(
+        {
+            "updated_codes": sorted(updated),
+            "failures": failures,
+            "window": f"{start.date()}~{end.date()}",
+            "updated_at": dt.datetime.now(),
+        },
+        STATE / "daily_announcement_update.json",
+    )
+    logging.info(
+        "Announcement incremental update: %s codes, %s failures",
+        len(updated), len(failures),
+    )
+    return updated
+
+
+def run_daily_update(
+    config: Dict,
+    codes: Optional[Sequence[str]] = None,
+    skip_warehouse: bool = False,
+    skip_slow: bool = False,
+    force: bool = False,
+) -> dict:
+    """One-command refresh to keep the research DB current through today.
+
+    Covers listed-universe changes, daily market data, corporate events,
+    equity structure, recent financials/announcements, derived tables, and the
+    DuckDB research layer. Slow Eastmoney/CNInfo/Sina layers can be skipped with
+    skip_slow=True for a fast bars-only evening pass.
+
+    If liquid bars already cover the latest trading day (and ``force`` is False),
+    the whole update is skipped — re-running the same evening is a no-op.
+    """
+    from build_dataset import (
+        build_corporate_actions,
+        build_equity_structure,
+        build_listing_dates,
+        build_reference_data,
+        build_reference_intervals,
+        build_universe,
+    )
+    from research_layer import rebuild_financial_availability
+
+    setup_logging()
+    end_date = _target_asof(config)
+    logging.info("Daily update starting; target asof=%s", end_date.date())
+
+    if not force and codes is None and _bars_already_at(end_date):
+        wh = _stock_daily_asof()
+        if wh is not None and wh >= end_date:
+            payload = {
+                "end_date": str(end_date.date()),
+                "skipped": True,
+                "reason": "bars_and_stock_daily_current",
+                "stock_daily_asof": str(wh.date()),
+                "updated_at": dt.datetime.now(),
+            }
+            atomic_json(payload, STATE / "daily_update.json")
+            logging.info(
+                "Skip update-daily: bars + stock_daily already through %s "
+                "(pass --force to redo)",
+                end_date.date(),
+            )
+            return payload
+        logging.info(
+            "Bars already through %s but stock_daily asof=%s — sync research layer",
+            end_date.date(),
+            wh.date() if wh is not None else None,
+        )
+        _sync_research_layer_for_asof(config, end_date)
+        wh2 = _stock_daily_asof()
+        payload = {
+            "end_date": str(end_date.date()),
+            "skipped": True,
+            "reason": "bars_current_research_synced",
+            "stock_daily_asof": str(wh2.date()) if wh2 is not None else None,
+            "updated_at": dt.datetime.now(),
+        }
+        atomic_json(payload, STATE / "daily_update.json")
+        logging.info(
+            "Skip bar fetch; research layer synced to %s",
+            wh2.date() if wh2 is not None else end_date.date(),
+        )
+        return payload
+
+    # 1) Universe / calendar
+    logging.info("Step 1/10 universe + listing dates + calendar")
+    build_universe(config)
+    build_listing_dates(config)
+    refresh_trade_calendar(config)
+    # Calendar may extend; recompute asof after refresh.
+    end_date = _target_asof(config)
+    if not force and codes is None and _bars_already_at(end_date):
+        wh = _stock_daily_asof()
+        if wh is None or wh < end_date:
+            logging.info(
+                "Bars current after calendar refresh; syncing research layer to %s",
+                end_date.date(),
+            )
+            _sync_research_layer_for_asof(config, end_date)
+            wh = _stock_daily_asof()
+        payload = {
+            "end_date": str(end_date.date()),
+            "skipped": True,
+            "reason": "bars_already_current_after_calendar",
+            "stock_daily_asof": str(wh.date()) if wh is not None else None,
+            "updated_at": dt.datetime.now(),
+        }
+        atomic_json(payload, STATE / "daily_update.json")
+        logging.info(
+            "Skip remaining update-daily: ready through %s",
+            end_date.date(),
+        )
+        return payload
+
+    # 2) Daily market facts
+    logging.info("Step 2/10 bars + indicators")
+    bar_codes = update_bars_incremental(config, codes=codes)
+    ind_codes = update_indicators_incremental(config, codes=codes)
+
+    listed = _listed_universe(codes)
+    listed_codes = listed["code"].astype(str).tolist()
+
+    if not skip_slow:
+        # 3) Event / capital / statement layers (network, slower)
+        logging.info("Step 3/10 corporate actions (force listed)")
+        build_corporate_actions(config, codes=listed_codes, force=True)
+        logging.info("Step 4/10 equity structure (force listed)")
+        build_equity_structure(config, codes=listed_codes, force=True)
+        logging.info("Step 5/10 financials (recent periods merge)")
+        update_financials_incremental(config, codes=listed_codes, periods=12)
+        logging.info("Step 6/10 announcements (recent window merge)")
+        update_announcements_incremental(config, codes=listed_codes, lookback_days=180)
+        logging.info("Step 7/10 financial availability")
+        rebuild_financial_availability(config)
+    else:
+        logging.warning(
+            "skip_slow=True: corporate/equity/financials/announcements not refreshed"
+        )
+
+    # 4) Derived daily tables
+    logging.info("Step 8/10 derived indicators / limits / shares")
+    bj_codes = listed.loc[listed.exchange.eq("BJ"), "code"].astype(str).tolist()
+    if codes is not None:
+        wanted = set(codes)
+        bj_codes = [c for c in bj_codes if c in wanted]
+    build_bj_daily_indicators(config, codes=bj_codes or None, force=True)
+    try:
+        from research_layer import enrich_bj_indicators_with_valuation
+
+        enrich_bj_indicators_with_valuation(config, codes=bj_codes or None)
+    except Exception as exc:  # noqa: BLE001
+        logging.warning("BJ valuation refresh skipped: %s", exc)
+
+    # After equity refresh, rebuild shares for all listed to catch unlocks.
+    build_limit_prices(config, codes=listed_codes, force=True)
+    build_shares_daily(config, codes=listed_codes, force=True)
+
+    # 5) Reference snapshots (industry/index) + intervals
+    logging.info("Step 9/10 reference snapshots")
+    try:
+        build_reference_data(config)
+        build_reference_intervals(config)
+    except Exception as exc:  # noqa: BLE001
+        logging.warning("Reference refresh skipped: %s", exc)
+
+    try:
+        build_snapshot(config)
+    except Exception as exc:  # noqa: BLE001
+        logging.warning("Snapshot refresh skipped: %s", exc)
+
+    # 6) Research layer
+    logging.info("Step 10/10 warehouse + catalog + validate")
+    if not skip_warehouse:
+        update_warehouse_current_year(config)
+        try:
+            from research_layer import build_catalog
+
+            build_catalog(config)
+        except Exception as exc:  # noqa: BLE001
+            logging.warning("Catalog refresh skipped: %s", exc)
+
+    validate_dataset(config)
+    payload = {
+        "end_date": str(end_date.date()),
+        "skipped": False,
+        "bar_updated": len(bar_codes),
+        "indicator_updated": len(ind_codes),
+        "listed_codes": len(listed_codes),
+        "skip_slow": skip_slow,
+        "updated_at": dt.datetime.now(),
+        "layers": [
+            "universe",
+            "listing_dates",
+            "trade_calendar",
+            "daily_bars",
+            "daily_indicators",
+            "corporate_actions" if not skip_slow else None,
+            "equity_structure" if not skip_slow else None,
+            "financials" if not skip_slow else None,
+            "announcements" if not skip_slow else None,
+            "financial_availability" if not skip_slow else None,
+            "bj_indicators",
+            "limit_prices",
+            "shares_daily",
+            "reference",
+            "market_snapshots",
+            "warehouse",
+            "catalog",
+        ],
+    }
+    atomic_json(payload, STATE / "daily_update.json")
+    logging.info("Daily update finished for asof=%s", end_date.date())
+    return payload

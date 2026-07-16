@@ -1,0 +1,58 @@
+{
+  "version": "v0.2",
+  "created_at": "2026-07-16",
+  "strategy": "rotating",
+  "frequency": "daily",
+  "market": "Shanghai and Shenzhen A-shares",
+  "data_release": "data-cn-2026-05-26",
+  "public_test_boundary": {
+    "development": ["2021-01-01", "2023-12-31"],
+    "holdout": ["2024-01-01", "2026-05-22"],
+    "data_cutoff": "2026-05-22",
+    "post_cutoff_bars_or_fills_in_metrics": false,
+    "post_cutoff_labels_in_diagnostics": false,
+    "holdout_used_for_feature_or_label_selection": false
+  },
+  "selected_research_score_column": "gbrt_score",
+  "selected_target": "target_rank",
+  "target_definition": "T+1 open to T+6 open five-trading-day interval return, industry and log-float-market-cap neutralized and cross-sectionally ranked",
+  "engineered_features": [
+    "overnight_gap_mean_5",
+    "close_location_mean_10",
+    "trend_r2_20",
+    "trend_residual_20",
+    "downside_vol_20",
+    "range_vol_10",
+    "price_volume_corr_20",
+    "turnover_shock_5_20"
+  ],
+  "rejected_target": {
+    "name": "target_path_rank",
+    "reason": "It improved two of three annual return/Sharpe pairs and full-period drawdown, but failed to beat the endpoint target under the preregistered 20bp fixed-path cost stress."
+  },
+  "selection_basis": "The engineered endpoint candidate improved development-period GBRT historical return, Sharpe, drawdown, 20bp stress return and Rank IC versus v0.1. The path target was rejected before the holdout was reopened.",
+  "development": {
+    "ann_return": -0.028278,
+    "sharpe": -0.179,
+    "max_drawdown": -0.264304,
+    "flat_20bp_ann_return": -0.017588,
+    "rank_ic_mean": 0.087442,
+    "positive_rank_ic_day_fraction": 0.843273
+  },
+  "holdout": {
+    "ann_return": 0.108408,
+    "sharpe": 0.781,
+    "max_drawdown": -0.113953,
+    "flat_20bp_ann_return": 0.105252,
+    "benchmark_ann_return": 0.153756,
+    "rank_ic_mean": 0.091232,
+    "positive_rank_ic_day_fraction": 0.806678
+  },
+  "admission_status": "research_only_forward_validation_required",
+  "unmet_gates": [
+    "Development-period absolute return is negative.",
+    "Holdout annual return does not exceed the CSI 300 benchmark.",
+    "Deflated Sharpe Ratio and complete multiple-testing inventory are not evaluated.",
+    "Announcement-quality financial PIT data and forward paper trading are not complete."
+  ]
+}

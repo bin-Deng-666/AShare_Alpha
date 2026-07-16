@@ -4,6 +4,10 @@
 
 - `development/`：2021—2023，只用于模型和粗粒度组合参数选择；
 - `holdout/`：2024—2026-05-22，打开后不再调参；
+- `experiments/v2_endpoint/` 与 `experiments/v2_path/`：相同增强特征下的端点/路径标签开发期对照；
+- `experiments/v2_selected_holdout/`：开发期选择冻结后的一次性增强版封存结果；
 - 根目录：两段合并的诊断，不用于选模。
+
+JSON 同时记录 `score_diagnostics`（相对实际五日端点收益）和 `model_target_diagnostics`（相对本次训练标签），避免路径标签模型只按端点收益 IC 被误读。
 
 这些结果只用于研究，不构成未来收益承诺。

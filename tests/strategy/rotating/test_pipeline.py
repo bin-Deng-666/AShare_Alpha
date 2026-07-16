@@ -193,6 +193,7 @@ def test_score_diagnostics_exclude_labels_realized_after_the_public_end(
             "date": dates,
             "eligible": True,
             "target_rank": values,
+            "model_target_rank": [4 - value for value in values],
             "label_available_date": pd.to_datetime(
                 ["2024-01-03"] * 5 + ["2024-01-10"] * 5
             ),
@@ -257,3 +258,12 @@ def test_score_diagnostics_exclude_labels_realized_after_the_public_end(
     )
 
     assert payload["score_diagnostics"]["gbrt_score"]["days"] == 1
+    assert payload["model_target_diagnostics"]["gbrt_score"]["days"] == 1
+    assert (
+        payload["model_target_diagnostics"]["gbrt_score"]["rank_ic_mean"]
+        < -0.99
+    )
+    markdown = (tmp_path / "reports" / "PERFORMANCE.md").read_text(
+        encoding="utf-8"
+    )
+    assert "## 模型训练标签 Rank IC" in markdown

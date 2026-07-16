@@ -2,7 +2,7 @@
 
 日频横截面轮动策略：固定因子、Elastic Net 与浅层 GBRT 三方赛马，五日分片持有，T+1 开盘执行。
 
-当前状态：三个公共 seam 已按 TDD 实现；正式全市场赛马选择浅层 GBRT 作为默认研究信号。流水线按年构建 PIT 面板、按季度冻结模型，并使用 T+1 开盘与历史时变成本回测。
+当前状态：三个公共 seam 已按 TDD 实现；正式全市场赛马选择浅层 GBRT 作为默认研究信号。v0.2 的标签是 `T+1 open -> T+6 open` 五日区间涨幅，而不是下一日涨幅，并在开发期采纳八项日线增强特征。流水线按年构建 PIT 面板、按季度冻结模型，并使用 T+1 开盘与历史时变成本回测。
 
 ```powershell
 # 首次按 data/README.md 构建最小 PIT 数据：
@@ -41,6 +41,6 @@ tar -xzf data\raw\simtradelab\simtradelab-data-cn-2026-05-26.tar.gz `
 .venv\Scripts\python.exe run.py rotating --date 2026-05-22
 ```
 
-当前正式结果见 [`reports/development/PERFORMANCE.md`](reports/development/PERFORMANCE.md) 与 [`reports/holdout/PERFORMANCE.md`](reports/holdout/PERFORMANCE.md)。结果用于研究，不构成收益承诺；封存期打开后不再调参。
+当前正式结果见 [`reports/development/PERFORMANCE.md`](reports/development/PERFORMANCE.md) 与 [`reports/holdout/PERFORMANCE.md`](reports/holdout/PERFORMANCE.md)，标签/特征选择过程见 [`experiments/20260716_interval_label_feature_race.md`](experiments/20260716_interval_label_feature_race.md)。结果用于研究，不构成收益承诺；封存期打开后不再调参。
 
 详见 [`docs/STRATEGY.md`](docs/STRATEGY.md)。

@@ -73,25 +73,32 @@ def score_panel_dataset(
     min_train_rows: int = 2_000,
     train_years: int = 3,
     random_state: int = 17,
+    feature_columns: tuple[str, ...] = MODEL_INPUT_FEATURES,
+    target_column: str = "target_rank",
 ) -> list[Path]:
     """Create leakage-safe daily scores, fitting each model once per quarter."""
     first = pd.Timestamp(start).normalize()
     last = pd.Timestamp(end).normalize()
     panel_path = Path(panel_root)
     score_path = Path(output_root)
-    columns = [
-        "code",
-        "date",
-        "eligible",
-        "target_rank",
-        "target_5",
-        "label_available_date",
-        "industry",
-        "adv_20",
-        "float_market_cap",
-        "amount",
-        *MODEL_INPUT_FEATURES,
-    ]
+    columns = list(
+        dict.fromkeys(
+            [
+                "code",
+                "date",
+                "eligible",
+                "target_rank",
+                target_column,
+                "target_5",
+                "label_available_date",
+                "industry",
+                "adv_20",
+                "float_market_cap",
+                "amount",
+                *feature_columns,
+            ]
+        )
+    )
     outputs: list[Path] = []
     for year in range(first.year, last.year + 1):
         prediction_start = max(first, pd.Timestamp(year=year, month=1, day=1))
@@ -116,27 +123,40 @@ def score_panel_dataset(
         scores = walk_forward_score(
             panel,
             prediction_dates=prediction_dates,
-            feature_columns=MODEL_INPUT_FEATURES,
+            feature_columns=feature_columns,
+            target_column=target_column,
             min_train_rows=min_train_rows,
             train_years=train_years,
             random_state=random_state,
         )
+        metadata_columns = [
+            "code",
+            "date",
+            "eligible",
+            "industry",
+            "adv_20",
+            "float_market_cap",
+            "amount",
+            "target_5",
+            "target_rank",
+            "label_available_date",
+        ]
+        if target_column != "target_rank":
+            metadata_columns.append(target_column)
         metadata = panel.loc[
             panel["date"].between(prediction_start, prediction_end),
-            [
-                "code",
-                "date",
-                "eligible",
-                "industry",
-                "adv_20",
-                "float_market_cap",
-                "amount",
-                "target_5",
-                "target_rank",
-                "label_available_date",
-            ],
+            metadata_columns,
         ].drop_duplicates(["code", "date"], keep="last")
-        scores = scores.merge(metadata, on=["code", "date"], how="left", validate="one_to_one")
+        if target_column == "target_rank":
+            metadata["model_target_rank"] = metadata["target_rank"]
+        else:
+            metadata = metadata.rename(columns={target_column: "model_target_rank"})
+        scores = scores.merge(
+            metadata,
+            on=["code", "date"],
+            how="left",
+            validate="one_to_one",
+        )
         output = score_path / f"year={year}" / "scores.parquet"
         _atomic_parquet(scores, output)
         outputs.append(output)
@@ -210,16 +230,19 @@ def _apply_flat_cost_stress(
 
 
 def _score_diagnostics(
-    scores: pd.DataFrame, *, evaluation_end: pd.Timestamp
+    scores: pd.DataFrame,
+    *,
+    evaluation_end: pd.Timestamp,
+    target_column: str = "target_rank",
 ) -> dict[str, Any]:
     diagnostics: dict[str, Any] = {}
-    if "target_rank" not in scores:
+    if target_column not in scores:
         return diagnostics
     if "label_available_date" not in scores:
         raise ValueError("score diagnostics require label_available_date")
     available = pd.to_datetime(scores["label_available_date"]).dt.normalize()
     realized = scores.loc[
-        scores["target_rank"].notna()
+        scores[target_column].notna()
         & available.le(pd.Timestamp(evaluation_end).normalize())
     ]
     for score_column in (
@@ -233,7 +256,7 @@ def _score_diagnostics(
             if len(cross_section) < 5:
                 continue
             ic = cross_section[score_column].corr(
-                cross_section["target_rank"], method="spearman"
+                cross_section[target_column], method="spearman"
             )
             if pd.notna(ic):
                 daily_ic.append(float(ic))
@@ -407,6 +430,11 @@ def run_backtest_dataset(
         "admission_status": "research_only_forward_validation_required",
         "params": asdict(params),
         "score_diagnostics": _score_diagnostics(scores, evaluation_end=last),
+        "model_target_diagnostics": _score_diagnostics(
+            scores,
+            evaluation_end=last,
+            target_column="model_target_rank",
+        ),
         "scenarios": summaries,
     }
     (root / "PERFORMANCE.json").write_text(
@@ -465,6 +493,39 @@ def run_backtest_dataset(
                 ),
             )
         )
+    if payload["model_target_diagnostics"]:
+        markdown.extend(
+            [
+                "",
+                "## 模型训练标签 Rank IC",
+                "",
+                "| 分数 | 日数 | 平均 Rank IC | 年化 ICIR | 正 IC 日占比 |",
+                "|---|---:|---:|---:|---:|",
+            ]
+        )
+        for name, diagnostic in payload["model_target_diagnostics"].items():
+            markdown.append(
+                "| {name} | {days} | {mean:.4f} | {icir:.2f} | "
+                "{positive:.1%} |".format(
+                    name=name,
+                    days=diagnostic["days"],
+                    mean=(
+                        diagnostic["rank_ic_mean"]
+                        if diagnostic["rank_ic_mean"] is not None
+                        else float("nan")
+                    ),
+                    icir=(
+                        diagnostic["rank_icir_annualized"]
+                        if diagnostic["rank_icir_annualized"] is not None
+                        else float("nan")
+                    ),
+                    positive=(
+                        diagnostic["positive_day_fraction"]
+                        if diagnostic["positive_day_fraction"] is not None
+                        else float("nan")
+                    ),
+                )
+            )
     markdown.extend(
         [
             "",

@@ -32,6 +32,7 @@ def walk_forward_score(
     *,
     prediction_dates: Iterable[pd.Timestamp | str] | None = None,
     feature_columns: Sequence[str] | None = None,
+    target_column: str = "target_rank",
     min_train_rows: int = 2_000,
     train_years: int = 3,
     random_state: int = 17,
@@ -43,7 +44,14 @@ def walk_forward_score(
         frame["label_available_date"]
     ).dt.normalize()
     features = list(feature_columns or MODEL_INPUT_FEATURES)
-    required = {"code", "date", "eligible", "target_rank", "label_available_date", *features}
+    required = {
+        "code",
+        "date",
+        "eligible",
+        target_column,
+        "label_available_date",
+        *features,
+    }
     missing = required.difference(frame.columns)
     if missing:
         raise ValueError(f"walk-forward panel missing columns: {', '.join(sorted(missing))}")
@@ -69,7 +77,7 @@ def walk_forward_score(
                 & frame["date"].lt(prediction_date)
                 & frame["date"].ge(train_start)
                 & frame["label_available_date"].le(prediction_date)
-                & frame["target_rank"].notna()
+                & frame[target_column].notna()
             ].copy()
             if len(train) < min_train_rows:
                 raise ValueError(
@@ -78,7 +86,7 @@ def walk_forward_score(
                 )
 
             x_train = train[features].replace([np.inf, -np.inf], np.nan).fillna(0.0)
-            y_train = train["target_rank"].astype(float)
+            y_train = train[target_column].astype(float)
             elastic = ElasticNet(
                 alpha=0.0005,
                 l1_ratio=0.1,
@@ -126,6 +134,7 @@ def walk_forward_score(
         ].mean(axis=1)
         predict["training_rows"] = training_rows
         predict["train_max_label_available_date"] = max_label_date
+        predict["model_target_column"] = target_column
         outputs.append(
             predict[
                 [
@@ -137,6 +146,7 @@ def walk_forward_score(
                     "ensemble_score",
                     "training_rows",
                     "train_max_label_available_date",
+                    "model_target_column",
                 ]
             ]
         )
@@ -152,6 +162,7 @@ def walk_forward_score(
                 "ensemble_score",
                 "training_rows",
                 "train_max_label_available_date",
+                "model_target_column",
             ]
         )
     return pd.concat(outputs, ignore_index=True)

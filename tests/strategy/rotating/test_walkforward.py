@@ -158,3 +158,56 @@ def test_walk_forward_score_keeps_control_features_out_of_fixed_factor_baseline(
     ).sort_values("code")
 
     assert scores["factor_score"].tolist() == [1.0, 0.0, -1.0]
+
+
+def test_walk_forward_score_can_fit_a_forward_interval_path_target() -> None:
+    rows = []
+    codes = ("000001", "000002", "000003")
+    training_dates = pd.bdate_range("2024-01-02", periods=4)
+    for date in training_dates:
+        for index, code in enumerate(codes):
+            rows.append(
+                {
+                    "code": code,
+                    "date": date,
+                    "eligible": True,
+                    "rank_ret_5": [-1.0, 0.0, 1.0][index],
+                    "target_rank": [-1.0, 0.0, 1.0][index],
+                    "target_path_rank": [1.0, 0.0, -1.0][index],
+                    "label_available_date": pd.Timestamp("2024-01-10"),
+                }
+            )
+    prediction_date = pd.Timestamp("2024-02-01")
+    for index, code in enumerate(codes):
+        rows.append(
+            {
+                "code": code,
+                "date": prediction_date,
+                "eligible": True,
+                "rank_ret_5": [-1.0, 0.0, 1.0][index],
+                "target_rank": None,
+                "target_path_rank": None,
+                "label_available_date": None,
+            }
+        )
+    panel = pd.DataFrame(rows)
+
+    endpoint = walk_forward_score(
+        panel,
+        prediction_dates=[prediction_date],
+        feature_columns=("rank_ret_5",),
+        target_column="target_rank",
+        min_train_rows=6,
+        train_years=5,
+    ).sort_values("code")
+    path = walk_forward_score(
+        panel,
+        prediction_dates=[prediction_date],
+        feature_columns=("rank_ret_5",),
+        target_column="target_path_rank",
+        min_train_rows=6,
+        train_years=5,
+    ).sort_values("code")
+
+    assert endpoint["elastic_score"].is_monotonic_increasing
+    assert path["elastic_score"].is_monotonic_decreasing

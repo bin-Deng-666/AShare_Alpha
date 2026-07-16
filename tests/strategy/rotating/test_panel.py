@@ -3,7 +3,15 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from strategy.rotating.features.build_panel import build_factor_panel
+from strategy.rotating.features.build_panel import (
+    CANDIDATE_MODEL_INPUT_FEATURES,
+    MODEL_INPUT_FEATURES,
+    build_factor_panel,
+)
+
+
+def test_engineered_feature_pack_is_the_selected_model_input_schema() -> None:
+    assert MODEL_INPUT_FEATURES == CANDIDATE_MODEL_INPUT_FEATURES
 
 
 def test_build_factor_panel_keeps_low_liquidity_observations_in_rolling_window() -> None:
@@ -106,6 +114,15 @@ def test_build_factor_panel_labels_next_open_through_sixth_open() -> None:
     assert (first["target_5"], first["label_available_date"]) == (
         16.0 / 11.0 - 1.0,
         dates[6],
+    )
+    assert first["target_path_5"] == np.mean(
+        [
+            12.0 / 11.0 - 1.0,
+            13.0 / 11.0 - 1.0,
+            14.0 / 11.0 - 1.0,
+            15.0 / 11.0 - 1.0,
+            16.0 / 11.0 - 1.0,
+        ]
     )
 
 
@@ -246,6 +263,14 @@ def test_build_factor_panel_exposes_the_registered_model_feature_schema() -> Non
         "bp",
         "roe",
         "log_float_market_cap",
+        "overnight_gap_mean_5",
+        "close_location_mean_10",
+        "trend_r2_20",
+        "trend_residual_20",
+        "downside_vol_20",
+        "range_vol_10",
+        "price_volume_corr_20",
+        "turnover_shock_5_20",
         "board_star",
         "board_chinext",
     }

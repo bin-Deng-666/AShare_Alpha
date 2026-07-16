@@ -1,0 +1,79 @@
+# 2026-07-17 五日路径均值标签赛马
+
+## 研究问题与唯一比较
+
+用户要求继续做特征工程，并让标签描述“下一段时间内的涨幅”，而不是单个未来日。本仓库当前端点标签已经是 `T+1 open -> T+6 open` 的五日区间收益，并非下一日收益；本轮进一步检验同一五日持有段的**路径均值**是否能改善监督信号：
+
+```text
+y_endpoint_5(T) = O(T+6) / O(T+1) - 1
+y_path_5(T) = mean_k[O(T+1+k) / O(T+1) - 1], k=1..5
+```
+
+唯一比较固定为：
+
+```text
+E: 已完成公司行为修复 + 固定五项涨跌停状态 bundle + target_rank
+P: 与 E 完全相同，只把模型监督目标改为 target_path_rank
+```
+
+`P` 奖励整个持有段内较早且持续的上涨，减少最后一个开盘点对训练损失的支配。最终经济评价仍是同一个真实五日轮换组合，并继续对实际端点收益 `target_5` 报告 Rank IC；路径标签 IC 只作为训练目标诊断，不得代替净成本组合收益。
+
+研究依据与固定公式见 [`interval_label_feature_engineering.md`](../../../docs/research/interval_label_feature_engineering.md)。路径标签曾在旧 v0.2 数据与特征上失败；本轮只回答它在已修正公司行为数据和已冻结价格限制特征下是否产生条件增益。相同 2021—2023 开发区间已被多次使用，本实验计为一次新的策略尝试，不把重复开发结果描述为独立样本外证据。
+
+## 事前冻结边界
+
+| 项目 | 冻结值 |
+|---|---|
+| 选择区间 | 2021-01-01—2023-12-31 |
+| 物理读取上限 | 2023-12-31；禁止读取或统计 2024+ |
+| 输入面板 | `strategy/rotating/cache/experiments/v4_price_limit_dev_panel` |
+| E 分数 | `strategy/rotating/cache/experiments/v4_price_limit_scores` |
+| P 分数 | `strategy/rotating/cache/experiments/v5_price_limit_path_scores` |
+| E 报告 | `strategy/rotating/reports/experiments/v4_price_limit_dev` |
+| P 报告 | `strategy/rotating/reports/experiments/v5_price_limit_path_dev` |
+| 特征 | 双方固定相同的 40 项 `PRICE_LIMIT_MODEL_INPUT_FEATURES` |
+| 模型 | 浅层 GBRT、Elastic Net、固定因子；季度重训、三年窗、随机种子 17 |
+| 组合 | 五个每日 sleeve、同一容量、缓冲、公司行为执行、历史费用与固定成本压力 |
+| 标签可得日 | 双方均为 `T+6`；训练只允许 `label_available_date <= prediction_date` |
+
+E/P 必须直接读取同一面板，不重建或追加原始数据。`target_rank` 与 `target_path_rank` 必须使用同一完整可执行路径样本：`T+1` 可买，`T+2 ... T+6` 每个开盘可卖，缺失、停牌、一字不可成交或标签能力不支持时两者同时为空。禁止前向填充；收益价格用 qfq，执行判断用 raw OHLC/限制价。
+
+## 身份与数据门槛
+
+查看收益前必须全部满足：
+
+1. E/P 分数的 `(code,date)` 键、实际端点收益 `target_5`、`target_rank`、`label_available_date` 和 `factor_score` 逐值一致；
+2. P 的 `_SCORE_SPEC.json` 只把 `target_column` 改为 `target_path_rank`，其余 40 项特征、训练窗、最小训练行、随机种子均与 E 一致；
+3. `model_target_rank` 在 E 中等于 `target_rank`、在 P 中等于 `target_path_rank`，且两组模型目标都不是全空或逐值相同；
+4. 两组 `train_max_label_available_date > date` 均为 0，分数最大日期与标签最大可得日均不晚于 2023-12-31；
+5. E/P 的公司行为执行审计在历史费用与 20bp 四条主要路径上都满足：未知持仓权益事件为 0，公告参考价不匹配的已知权益全部入账；
+6. 分数行数、三个完整开发年度、五个不重叠 cohort 和配对日收益日期完整。
+
+任一门槛失败即记为 `insufficient_data`，停止胜负判断，不读取 2024+ 补救。
+
+## 胜出门槛
+
+P 只有同时满足以下全部条件才胜出：
+
+1. 2021—2023 历史时变费用下净年化收益和 Sharpe 均严格高于 E；
+2. 三个完整日历年度至少两个年度的净收益和 Sharpe 同时严格高于 E；
+3. 固定 20bp 往返成本下净年化收益和 Sharpe 均严格高于 E；
+4. 历史费用最大回撤相对 E 恶化不超过 2 个百分点，年化换手不高于 E 的 125%；
+5. P 对实际五日端点收益的平均 Rank IC 不低于 E 减 0.002，且 P 的五个实际端点 cohort IC 全为正；
+6. P-E 配对日净收益均值为正，并固定报告 HAC(4) t；
+7. 所有身份、泄漏、公共边界和公司行为执行门槛通过。
+
+任一项失败即整体 `rejected_on_development`，保留端点标签。不得按年度、板块或单一 cohort 挑选路径标签；不得改变路径权重、加入端点/路径混合权重、搜索 10/20 日窗口或查看旧封存期打破平局。
+
+## 必报诊断
+
+- E/P 分数规格、键和实际端点目标身份；两种模型监督目标的非空数、相关性与差异数；
+- 两种模型分数的全期/季度日度 Spearman、top-25% 重合率；
+- 对实际端点收益和各自训练标签的全期、逐年、HAC(4) 与五 cohort Rank IC；
+- 历史费用、固定 20/40/80bp 的收益、Sharpe、回撤、换手、订单延期和期末积压；
+- B/L 已冻结的数据门槛摘要，以及 E/P × 历史费用/20bp 的公司行为权益审计；
+- 最终机器决策。无论成功或失败都保存报告并计入尝试台账。
+
+## 完成结果
+
+尚未运行。本文在生成 P 分数、回测或读取任何 P 结果之前提交到工作树。

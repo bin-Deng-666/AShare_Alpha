@@ -41,6 +41,7 @@ from build_dataset import (
     bar_output_path,
     build_bj_daily_indicators,
     build_limit_prices,
+    build_qfq_from_corporate_actions,
     build_shares_daily,
     build_snapshot,
     fetch_akshare_history,
@@ -955,6 +956,7 @@ def run_daily_update(
     the whole update is skipped — re-running the same evening is a no-op.
     """
     from build_dataset import (
+        build_corporate_action_events,
         build_corporate_actions,
         build_equity_structure,
         build_listing_dates,
@@ -1005,6 +1007,13 @@ def run_daily_update(
         # 3) Event / capital / statement layers (network, slower)
         logging.info("Step 3/10 corporate actions (force listed)")
         build_corporate_actions(config, codes=listed_codes, force=True)
+        build_corporate_action_events(
+            config,
+            codes=listed_codes,
+            force=True,
+            data_cutoff=end_date,
+            max_workers=max_workers,
+        )
         logging.info("Step 4/10 equity structure (force listed)")
         build_equity_structure(config, codes=listed_codes, force=True)
         logging.info("Step 5/10 financials (recent periods merge)")
@@ -1016,6 +1025,13 @@ def run_daily_update(
     else:
         logging.warning(
             "skip_slow=True: corporate/equity/financials/announcements not refreshed"
+        )
+        build_corporate_action_events(
+            config,
+            codes=listed_codes,
+            force=False,
+            data_cutoff=end_date,
+            max_workers=max_workers,
         )
 
     # 4) Derived daily tables
@@ -1033,6 +1049,9 @@ def run_daily_update(
         logging.warning("BJ valuation refresh skipped: %s", exc)
 
     # After equity refresh, rebuild shares for all listed to catch unlocks.
+    build_qfq_from_corporate_actions(
+        config, codes=listed_codes, force=True
+    )
     build_limit_prices(config, codes=listed_codes, force=True)
     build_shares_daily(config, codes=listed_codes, force=True)
 

@@ -56,9 +56,19 @@ def load_point_in_time_source(
         d.limit_down,
         d.is_limit_up,
         d.is_limit_down,
+        d.limit_reference_price,
+        d.limit_reference_source,
+        d.limit_validation_status,
+        d.cash_dividend_per_share,
+        d.share_distribution_ratio,
+        d.rights_issue_ratio,
+        d.rights_issue_price,
+        d.corporate_action_adjusted,
+        d.corporate_action_formula_status,
         r.open AS raw_open,
         r.high AS raw_high,
         r.low AS raw_low,
+        r.close AS raw_close,
         COALESCE(i.industry_name, 'UNKNOWN') AS industry,
         d.bar_source,
         d.indicator_source
@@ -106,7 +116,13 @@ def load_execution_bars(
         limit_up,
         limit_down,
         is_limit_up,
-        is_limit_down
+        is_limit_down,
+        cash_dividend_per_share,
+        share_distribution_ratio,
+        rights_issue_ratio,
+        rights_issue_price,
+        corporate_action_adjusted,
+        corporate_action_formula_status
       FROM stock_daily_raw
       WHERE exchange IN ('SH', 'SZ')
         AND date BETWEEN CAST(? AS DATE) AND CAST(? AS DATE)

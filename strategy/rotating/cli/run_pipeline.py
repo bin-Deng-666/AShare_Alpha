@@ -13,9 +13,11 @@ from strategy.rotating.features.build_panel import (
     INDUSTRY_SIZE_MODEL_INPUT_FEATURES,
     MODEL_TARGET_COLUMN,
     PATH_TARGET_COLUMN,
+    PRICE_LIMIT_MODEL_INPUT_FEATURES,
 )
 from strategy.rotating.pipeline import (
     augment_panel_dataset_with_industry_size_features,
+    augment_panel_dataset_with_price_limit_features,
     build_panel_dataset,
     run_backtest_dataset,
     score_panel_dataset,
@@ -26,7 +28,14 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "command",
-        choices=("build-panel", "augment-frozen-panel", "score", "backtest", "all"),
+        choices=(
+            "build-panel",
+            "augment-frozen-panel",
+            "augment-price-limit-panel",
+            "score",
+            "backtest",
+            "all",
+        ),
     )
     parser.add_argument("--start", required=True)
     parser.add_argument("--end", required=True)
@@ -35,7 +44,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--panel-root")
     parser.add_argument(
         "--frozen-panel-root",
-        help="Input panel root for augment-frozen-panel; --panel-root is its output",
+        help=(
+            "Input panel root for either augmentation command; --panel-root "
+            "is its output"
+        ),
     )
     parser.add_argument("--score-root")
     parser.add_argument(
@@ -45,7 +57,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--feature-set",
-        choices=("baseline", "enhanced", "industry_size"),
+        choices=("baseline", "enhanced", "industry_size", "price_limit"),
         default="enhanced",
     )
     parser.add_argument(
@@ -74,10 +86,12 @@ def main() -> None:
         "baseline": BASELINE_MODEL_INPUT_FEATURES,
         "enhanced": CANDIDATE_MODEL_INPUT_FEATURES,
         "industry_size": INDUSTRY_SIZE_MODEL_INPUT_FEATURES,
+        "price_limit": PRICE_LIMIT_MODEL_INPUT_FEATURES,
     }[args.feature_set]
     panel_options = {
         **({"output_root": args.panel_root} if args.panel_root else {}),
         "include_industry_size_features": args.feature_set == "industry_size",
+        "include_price_limit_features": args.feature_set == "price_limit",
     }
     if args.command == "augment-frozen-panel":
         if args.feature_set != "industry_size":
@@ -89,6 +103,22 @@ def main() -> None:
                 "augment-frozen-panel requires --frozen-panel-root and --panel-root"
             )
         augment_panel_dataset_with_industry_size_features(
+            args.start,
+            args.end,
+            input_root=args.frozen_panel_root,
+            output_root=args.panel_root,
+        )
+        return
+    if args.command == "augment-price-limit-panel":
+        if args.feature_set != "price_limit":
+            raise ValueError(
+                "augment-price-limit-panel requires --feature-set price_limit"
+            )
+        if not args.frozen_panel_root or not args.panel_root:
+            raise ValueError(
+                "augment-price-limit-panel requires --frozen-panel-root and --panel-root"
+            )
+        augment_panel_dataset_with_price_limit_features(
             args.start,
             args.end,
             input_root=args.frozen_panel_root,

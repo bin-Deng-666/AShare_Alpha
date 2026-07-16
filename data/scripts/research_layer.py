@@ -477,7 +477,16 @@ def warehouse_layer_specs(parquet_root: Path | None = None) -> Tuple[WarehouseLa
         WarehouseLayerSpec(
             "limit_prices",
             str(root / "limit_prices" / "*.parquet"),
-            ("code", "date", "prev_close", "close", "limit_up", "limit_down", "limit_pct", "is_limit_up", "is_limit_down", "source"),
+            (
+                "code", "date", "prev_close", "reference_price",
+                "reference_price_source", "limit_validation_status",
+                "cash_dividend_per_share", "share_distribution_ratio",
+                "rights_issue_ratio", "rights_issue_price",
+                "corporate_action_adjusted", "corporate_action_formula_status",
+                "close",
+                "limit_up", "limit_down", "limit_pct", "is_limit_up",
+                "is_limit_down", "source",
+            ),
             False,
         ),
     )
@@ -677,6 +686,15 @@ def build_warehouse(config: Dict) -> None:
                 l.limit_pct,
                 l.is_limit_up,
                 l.is_limit_down,
+                l.reference_price,
+                l.reference_price_source,
+                l.limit_validation_status,
+                l.cash_dividend_per_share,
+                l.share_distribution_ratio,
+                l.rights_issue_ratio,
+                l.rights_issue_price,
+                l.corporate_action_adjusted,
+                l.corporate_action_formula_status,
                 year(CAST(b.date AS DATE)) AS year,
                 b.exchange AS exchange_part
               FROM read_parquet('{(WAREHOUSE / "daily_bars_qfq").as_posix()}/**/*.parquet', hive_partitioning=true, union_by_name=true) b
@@ -763,6 +781,17 @@ def _catalog_daily_view_sql(adjustment: str) -> str:
           CAST(l.limit_pct AS DOUBLE) AS limit_pct,
           CAST(COALESCE(l.is_limit_up, FALSE) AS BOOLEAN) AS is_limit_up,
           CAST(COALESCE(l.is_limit_down, FALSE) AS BOOLEAN) AS is_limit_down,
+          CAST(l.reference_price AS DOUBLE) AS limit_reference_price,
+          CAST(l.reference_price_source AS VARCHAR) AS limit_reference_source,
+          CAST(l.limit_validation_status AS VARCHAR) AS limit_validation_status,
+          CAST(l.cash_dividend_per_share AS DOUBLE) AS cash_dividend_per_share,
+          CAST(l.share_distribution_ratio AS DOUBLE) AS share_distribution_ratio,
+          CAST(l.rights_issue_ratio AS DOUBLE) AS rights_issue_ratio,
+          CAST(l.rights_issue_price AS DOUBLE) AS rights_issue_price,
+          CAST(COALESCE(l.corporate_action_adjusted, FALSE) AS BOOLEAN)
+              AS corporate_action_adjusted,
+          CAST(l.corporate_action_formula_status AS VARCHAR)
+              AS corporate_action_formula_status,
         """
     else:
         limit_columns = """
@@ -771,6 +800,15 @@ def _catalog_daily_view_sql(adjustment: str) -> str:
           NULL::DOUBLE AS limit_pct,
           FALSE AS is_limit_up,
           FALSE AS is_limit_down,
+          NULL::DOUBLE AS limit_reference_price,
+          NULL::VARCHAR AS limit_reference_source,
+          NULL::VARCHAR AS limit_validation_status,
+          NULL::DOUBLE AS cash_dividend_per_share,
+          NULL::DOUBLE AS share_distribution_ratio,
+          NULL::DOUBLE AS rights_issue_ratio,
+          NULL::DOUBLE AS rights_issue_price,
+          FALSE AS corporate_action_adjusted,
+          NULL::VARCHAR AS corporate_action_formula_status,
         """
 
     return f"""

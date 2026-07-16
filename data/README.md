@@ -180,6 +180,9 @@ source        VARCHAR NOT NULL
 ```
 
 `raw`永久保留，用于复权校验和公司行为研究；`qfq`用于多数收益率和技术指标研究。
+当行情源的 qfq 未完整处理送转或分红时，运行
+`python3 scripts/build_dataset.py qfq-corporate-actions --force`，从 raw OHLC 和
+`corporate_actions.ex_date` 重建累计前复权因子；输出保存 `adjustment_factor`，事件日以前包含该次因子，事件日及以后不包含。策略实验须让基准与候选使用同一份重建快照。
 
 ### `daily_indicators`
 
@@ -490,9 +493,15 @@ source              VARCHAR NOT NULL
 
 来源：`parquet/limit_prices/{code}.parquet`
 
-由未复权昨收与板块/ST规则派生：主板10%、创业板注册制后与科创板20%、北交所30%；
+由未复权价格参考基准与板块/ST规则派生：普通交易日使用未复权昨收；除权除息日按
+交易所公式使用公司行为中的现金红利与送转股重建除权（息）参考价。主板10%、创业板注册制后与科创板20%、北交所30%；
 主板 ST 在 2026-07-06 前为5%、此后为10%。沪深注册制 IPO 前5个交易日、普通首日或无昨收时涨跌停价为空。`is_limit_up` / `is_limit_down` 按收盘价与涨跌停价
-（±0.01 容差）标记。
+按分位精确相等标记（相差 0.01 元即不是封板）。若未复权 OHLC 越过派生边界，该日限制价置空并以
+`limit_validation_status=raw_ohlc_outside_limit` 标记，策略不得把该日当作可验证的限制价观测。
+公司行为若出现 `report_date > ex_date` 的不可能时序（公开源历史脏记录），不得覆盖同一除权日的有效方案。
+`corporate_action_formula_status` 把价格公式、持仓已知权益入账、事件日交易与跨事件标签能力分开解释：
+例如配股可保留经核验的除权参考价和同日已知现金/送转，但不自动认购配股；公告参考价不匹配时限制价无效，明确的现金/送转仍可入账；缩股或未分类股本变化则不得猜测持仓权益。
+参考价缺口还要区分是否已有公告：已有公告时保留公告权益项但阻断价格、事件日交易和标签能力；无公告缺口的权益未知，持仓跨越时必须进入未解决审计并使实验门槛失败。
 
 逻辑主键：`code + date`
 
@@ -500,6 +509,15 @@ source              VARCHAR NOT NULL
 code                VARCHAR NOT NULL
 date                DATE NOT NULL
 prev_close          DOUBLE
+reference_price     DOUBLE
+reference_price_source VARCHAR  -- previous_raw_close、corporate_actions_ex_right、unsupported_corporate_action
+limit_validation_status VARCHAR -- valid、not_applicable、raw_ohlc_outside_limit、unsupported_corporate_action
+cash_dividend_per_share DOUBLE
+share_distribution_ratio DOUBLE
+rights_issue_ratio  DOUBLE
+rights_issue_price  DOUBLE
+corporate_action_adjusted BOOLEAN
+corporate_action_formula_status VARCHAR
 close               DOUBLE
 limit_up            DOUBLE
 limit_down          DOUBLE
@@ -568,6 +586,8 @@ python3 scripts/build_dataset.py snapshot
 python3 scripts/build_dataset.py financials
 python3 scripts/build_dataset.py announcements
 python3 scripts/build_dataset.py corporate-actions
+python3 scripts/build_dataset.py corporate-action-events --data-cutoff 2023-12-31
+python3 scripts/build_dataset.py qfq-corporate-actions --force --data-cutoff 2023-12-31
 python3 scripts/build_dataset.py equity-structure
 python3 scripts/build_dataset.py shares-daily
 python3 scripts/build_dataset.py limit-prices
@@ -626,4 +646,5 @@ python3 scripts/view_data.py \
 3. 前复权序列会因未来公司行为变化，原始行情应永久保留。
 4. 行业和指数成分必须使用历史快照，不能用当前成分回填历史。
 5. 回测还需实现手续费、印花税、滑点、T+1、涨跌停和停牌限制。
+   使用未复权价格记账时，除权日开盘前还须向已有持仓入账现金红利和送转股；除权日新买入不享有该次权益。五日策略按一个月内持股的 20% 股息红利税保守计提。
 6. 免费公开源无法完全复原历史简称、行业和退市证券，缺口应在质量报告中披露。

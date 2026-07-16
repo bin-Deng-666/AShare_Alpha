@@ -9,6 +9,273 @@ from strategy.rotating.config.params import DEFAULT_PARAMS
 from strategy.rotating.engine.portfolio import run_portfolio
 
 
+def test_portfolio_credits_cash_and_share_distributions_before_ex_date_open() -> None:
+    dates = pd.to_datetime(["2023-05-30", "2023-05-31", "2023-06-01"])
+    scores = pd.DataFrame(
+        {
+            "code": ["000001"],
+            "date": [dates[0]],
+            "ensemble_score": [1.0],
+            "eligible": [True],
+            "industry": ["银行"],
+            "adv_20": [100e6],
+        }
+    )
+    bars = pd.DataFrame(
+        {
+            "code": "000001",
+            "date": dates,
+            "open": [10.0, 10.0, 4.5],
+            "close": [10.0, 10.0, 4.5],
+            "high": [10.0, 10.0, 4.5],
+            "low": [10.0, 10.0, 4.5],
+            "trade_status": True,
+            "corporate_action_adjusted": [False, False, True],
+            "cash_dividend_per_share": [0.0, 0.0, 1.0],
+            "share_distribution_ratio": [0.0, 0.0, 1.0],
+        }
+    )
+
+    result = run_portfolio(
+        scores,
+        bars,
+        params=replace(
+            DEFAULT_PARAMS,
+            names_per_sleeve=1,
+            enable_realistic_costs=False,
+            enable_open_slippage=False,
+        ),
+        initial_capital=100_000.0,
+    )
+
+    buy = result["trades"].iloc[0]
+    action = result["corporate_actions"].iloc[0]
+    assert action["prior_shares"] == buy["shares"]
+    assert action["new_shares"] == buy["shares"] * 2
+    assert action["gross_dividend_cash"] == pytest.approx(buy["shares"])
+    assert action["dividend_tax"] == pytest.approx(buy["shares"] * 0.20)
+    assert result["equity"].iloc[-1]["equity"] == pytest.approx(
+        100_000.0 - buy["fee"] - action["dividend_tax"]
+    )
+
+
+def test_portfolio_audits_rights_issue_without_automatic_subscription() -> None:
+    dates = pd.to_datetime(["2023-05-30", "2023-05-31", "2023-06-01"])
+    scores = pd.DataFrame(
+        {
+            "code": ["000001"],
+            "date": [dates[0]],
+            "ensemble_score": [1.0],
+            "eligible": [True],
+            "industry": ["银行"],
+            "adv_20": [100e6],
+        }
+    )
+    bars = pd.DataFrame(
+        {
+            "code": "000001",
+            "date": dates,
+            "open": [10.0, 10.0, 8.8],
+            "close": [10.0, 10.0, 8.8],
+            "high": [10.2, 10.2, 9.0],
+            "low": [9.8, 9.8, 8.6],
+            "trade_status": True,
+            "corporate_action_adjusted": [False, False, True],
+            "corporate_action_formula_status": [
+                "none",
+                "none",
+                "unsupported_rights_issue",
+            ],
+            "rights_issue_ratio": [0.0, 0.0, 0.3],
+            "rights_issue_price": [0.0, 0.0, 5.0],
+        }
+    )
+
+    result = run_portfolio(
+        scores,
+        bars,
+        params=replace(
+            DEFAULT_PARAMS,
+            names_per_sleeve=1,
+            enable_realistic_costs=False,
+            enable_open_slippage=False,
+        ),
+        initial_capital=100_000.0,
+    )
+
+    buy = result["trades"].iloc[0]
+    action = result["corporate_actions"].iloc[0]
+    assert action["formula_status"] == "unsupported_rights_issue"
+    assert action["execution_policy"] == (
+        "known_entitlements_credit_no_rights_subscription"
+    )
+    assert action["holder_entitlements_supported"]
+    assert not action["execution_supported"]
+    assert action["prior_shares"] == action["new_shares"] == buy["shares"]
+    assert action["rights_issue_ratio"] == pytest.approx(0.3)
+    assert action["net_dividend_cash"] == 0.0
+
+
+def test_portfolio_credits_known_entitlements_when_reference_formula_mismatches(
+) -> None:
+    dates = pd.to_datetime(["2023-05-30", "2023-05-31", "2023-06-01"])
+    scores = pd.DataFrame(
+        {
+            "code": ["000001"],
+            "date": [dates[0]],
+            "ensemble_score": [1.0],
+            "eligible": [True],
+            "industry": ["银行"],
+            "adv_20": [100e6],
+        }
+    )
+    bars = pd.DataFrame(
+        {
+            "code": "000001",
+            "date": dates,
+            "open": [10.0, 10.0, 4.5],
+            "close": [10.0, 10.0, 4.5],
+            "high": [10.0, 10.0, 4.5],
+            "low": [10.0, 10.0, 4.5],
+            "trade_status": True,
+            "corporate_action_adjusted": [False, False, True],
+            "corporate_action_formula_status": [
+                "none",
+                "none",
+                "unsupported_reference_mismatch",
+            ],
+            "cash_dividend_per_share": [0.0, 0.0, 1.0],
+            "share_distribution_ratio": [0.0, 0.0, 1.0],
+        }
+    )
+
+    result = run_portfolio(
+        scores,
+        bars,
+        params=replace(
+            DEFAULT_PARAMS,
+            names_per_sleeve=1,
+            enable_realistic_costs=False,
+            enable_open_slippage=False,
+        ),
+        initial_capital=100_000.0,
+    )
+
+    buy = result["trades"].iloc[0]
+    action = result["corporate_actions"].iloc[0]
+    assert action["formula_status"] == "unsupported_reference_mismatch"
+    assert action["execution_policy"] == (
+        "known_entitlements_credit_event_day_orders_blocked"
+    )
+    assert action["holder_entitlements_supported"]
+    assert not action["price_formula_supported"]
+    assert not action["execution_supported"]
+    assert not action["label_supported"]
+    assert action["new_shares"] == buy["shares"] * 2
+    assert action["gross_dividend_cash"] == pytest.approx(buy["shares"])
+    assert result["equity"].iloc[-1]["equity"] == pytest.approx(
+        100_000.0 - buy["fee"] - action["dividend_tax"]
+    )
+
+
+def test_portfolio_flags_unresolved_holder_entitlements() -> None:
+    dates = pd.to_datetime(["2023-05-30", "2023-05-31", "2023-06-01"])
+    scores = pd.DataFrame(
+        {
+            "code": ["000001"],
+            "date": [dates[0]],
+            "ensemble_score": [1.0],
+            "eligible": [True],
+            "industry": ["银行"],
+            "adv_20": [100e6],
+        }
+    )
+    bars = pd.DataFrame(
+        {
+            "code": "000001",
+            "date": dates,
+            "open": [10.0, 10.0, 8.0],
+            "close": [10.0, 10.0, 8.0],
+            "high": [10.0, 10.0, 8.0],
+            "low": [10.0, 10.0, 8.0],
+            "trade_status": True,
+            "corporate_action_adjusted": [False, False, True],
+            "corporate_action_formula_status": [
+                "none",
+                "none",
+                "unsupported_unclassified_share_change",
+            ],
+        }
+    )
+
+    result = run_portfolio(
+        scores,
+        bars,
+        params=replace(
+            DEFAULT_PARAMS,
+            names_per_sleeve=1,
+            enable_realistic_costs=False,
+            enable_open_slippage=False,
+        ),
+        initial_capital=100_000.0,
+    )
+
+    buy = result["trades"].iloc[0]
+    action = result["corporate_actions"].iloc[0]
+    assert action["execution_policy"] == "unresolved_holder_entitlements"
+    assert not action["holder_entitlements_supported"]
+    assert action["prior_shares"] == action["new_shares"] == buy["shares"]
+    assert action["net_dividend_cash"] == 0.0
+
+
+def test_portfolio_audits_reference_gap_without_a_price_adjustment() -> None:
+    dates = pd.to_datetime(["2023-05-30", "2023-05-31", "2023-06-01"])
+    scores = pd.DataFrame(
+        {
+            "code": ["000001"],
+            "date": [dates[0]],
+            "ensemble_score": [1.0],
+            "eligible": [True],
+            "industry": ["银行"],
+            "adv_20": [100e6],
+        }
+    )
+    bars = pd.DataFrame(
+        {
+            "code": "000001",
+            "date": dates,
+            "open": [10.0, 10.0, 8.0],
+            "close": [10.0, 10.0, 8.0],
+            "high": [10.0, 10.0, 8.0],
+            "low": [10.0, 10.0, 8.0],
+            "trade_status": True,
+            "corporate_action_adjusted": False,
+            "corporate_action_formula_status": [
+                "none",
+                "none",
+                "unsupported_missing_reference_price",
+            ],
+        }
+    )
+
+    result = run_portfolio(
+        scores,
+        bars,
+        params=replace(
+            DEFAULT_PARAMS,
+            names_per_sleeve=1,
+            enable_realistic_costs=False,
+            enable_open_slippage=False,
+        ),
+        initial_capital=100_000.0,
+    )
+
+    action = result["corporate_actions"].iloc[0]
+    assert action["formula_status"] == "unsupported_missing_reference_price"
+    assert action["execution_policy"] == "unresolved_holder_entitlements"
+    assert not action["holder_entitlements_supported"]
+
+
 def test_market_gate_cancels_delayed_buy_when_the_execution_month_turns_off() -> None:
     dates = pd.to_datetime(["2024-01-30", "2024-01-31", "2024-02-01"])
     scores = pd.DataFrame(
@@ -198,6 +465,10 @@ def test_run_portfolio_fills_signal_at_next_open_and_floors_to_board_lot() -> No
     )
     assert trade["shares"] == 600
     assert trade["shares"] % 100 == 0
+    audit = result["order_audit"].iloc[0]
+    assert audit["order_id"] == trade["order_id"]
+    assert audit["outcome"] == "filled"
+    assert audit["requested_amount"] >= audit["filled_amount"] > 0.0
 
 
 def test_run_portfolio_rolls_one_price_limit_up_buy_to_next_tradable_open() -> None:
@@ -236,6 +507,12 @@ def test_run_portfolio_rolls_one_price_limit_up_buy_to_next_tradable_open() -> N
     result = run_portfolio(scores, bars, params=params, initial_capital=100_000.0)
 
     assert result["trades"].iloc[0]["date"] == dates[2]
+    assert result["order_audit"]["outcome"].tolist() == ["deferred", "filled"]
+    assert result["order_audit"]["reason"].tolist() == [
+        "one_price_limit",
+        "executed",
+    ]
+    assert result["order_audit"].iloc[0]["requested_amount"] > 0.0
 
 
 def test_run_portfolio_holds_five_trading_sessions_not_five_calendar_days() -> None:

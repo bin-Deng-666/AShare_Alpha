@@ -9,7 +9,10 @@ from strategy.rotating.features.build_panel import (
     INDUSTRY_SIZE_MODEL_INPUT_FEATURES,
     MODEL_INPUT_FEATURES,
     MODEL_TARGET_COLUMN,
+    PRICE_LIMIT_MODEL_FEATURES,
+    PRICE_LIMIT_MODEL_INPUT_FEATURES,
     add_industry_size_residual_features,
+    add_price_limit_state_features,
     build_factor_panel,
 )
 
@@ -25,6 +28,111 @@ def test_engineered_feature_pack_is_the_selected_model_input_schema() -> None:
         "rank_bp_industry_size_residual",
         "rank_roe_industry_size_residual",
     )
+    assert PRICE_LIMIT_MODEL_INPUT_FEATURES == (
+        MODEL_INPUT_FEATURES
+        + PRICE_LIMIT_MODEL_FEATURES
+        + ("limit_history_missing_5",)
+    )
+
+
+def test_price_limit_state_features_use_five_market_sessions_and_keep_suspensions() -> None:
+    dates = pd.bdate_range("2023-01-02", periods=6)
+    frame = pd.DataFrame(
+        {
+            "code": "000001",
+            "date": dates,
+            "trade_status": [True, True, True, True, False, True],
+            "limit_up": [11.0, 11.0, 11.0, 11.0, np.nan, 11.0],
+            "limit_down": [9.0, 9.0, 9.0, 9.0, np.nan, 9.0],
+            "raw_high": [11.0, 11.0, 10.5, 10.5, np.nan, 10.5],
+            "raw_low": [9.5, 9.5, 9.0, 9.0, np.nan, 9.5],
+            "raw_close": [11.0, 10.5, 9.0, 9.5, np.nan, 10.0],
+            "is_limit_up": [True, False, False, False, False, False],
+            "is_limit_down": [False, False, True, False, False, False],
+            "limit_validation_status": "valid",
+        }
+    )
+
+    result = add_price_limit_state_features(frame, market_dates=dates)
+
+    assert result.loc[4, "limit_history_missing_5"] == 0
+    assert result.loc[4, list(PRICE_LIMIT_MODEL_FEATURES)].tolist() == pytest.approx(
+        [0.2, 0.2, 0.2, 0.2]
+    )
+    assert result.loc[5, list(PRICE_LIMIT_MODEL_FEATURES)].tolist() == pytest.approx(
+        [0.0, 0.2, 0.2, 0.2]
+    )
+
+
+def test_price_limit_state_features_do_not_skip_a_missing_market_date() -> None:
+    market_dates = pd.bdate_range("2023-01-02", periods=6)
+    dates = market_dates.delete(2)
+    frame = pd.DataFrame(
+        {
+            "code": "000001",
+            "date": dates,
+            "trade_status": True,
+            "limit_up": 11.0,
+            "limit_down": 9.0,
+            "raw_high": 10.5,
+            "raw_low": 9.5,
+            "raw_close": 10.0,
+            "is_limit_up": False,
+            "is_limit_down": False,
+            "limit_validation_status": "valid",
+        }
+    )
+
+    result = add_price_limit_state_features(frame, market_dates=market_dates)
+
+    assert result.iloc[-1]["limit_history_missing_5"] == 1
+    assert result.iloc[-1][list(PRICE_LIMIT_MODEL_FEATURES)].isna().all()
+
+
+def test_price_limit_state_features_reject_close_flags_without_a_touch() -> None:
+    dates = pd.bdate_range("2023-01-02", periods=5)
+    frame = pd.DataFrame(
+        {
+            "code": "000001",
+            "date": dates,
+            "trade_status": True,
+            "limit_up": 11.0,
+            "limit_down": 9.0,
+            "raw_high": 10.5,
+            "raw_low": 9.5,
+            "raw_close": [10.0, 10.0, 10.0, 10.0, 11.0],
+            "is_limit_up": [False, False, False, False, True],
+            "is_limit_down": False,
+            "limit_validation_status": "valid",
+        }
+    )
+
+    with pytest.raises(ValueError, match="inconsistent"):
+        add_price_limit_state_features(frame, market_dates=dates)
+
+
+def test_price_limit_state_features_require_exact_cent_close_for_sealed_event() -> None:
+    dates = pd.bdate_range("2023-01-02", periods=5)
+    frame = pd.DataFrame(
+        {
+            "code": "000001",
+            "date": dates,
+            "trade_status": True,
+            "limit_up": 14.55,
+            "limit_down": 11.91,
+            "raw_high": 14.55,
+            "raw_low": 13.30,
+            "raw_close": 14.54,
+            "is_limit_up": False,
+            "is_limit_down": False,
+            "limit_validation_status": "valid",
+        }
+    )
+
+    result = add_price_limit_state_features(frame, market_dates=dates)
+
+    assert result.iloc[-1]["limit_up_close_share_5"] == pytest.approx(0.0)
+    assert result.iloc[-1]["limit_up_unsealed_share_5"] == pytest.approx(1.0)
 
 
 def test_industry_size_residual_features_remove_industry_and_size_components() -> None:
@@ -298,6 +406,50 @@ def test_forward_interval_labels_require_an_executable_complete_path() -> None:
     )
 
     first = panel.iloc[0]
+    assert pd.isna(first["target_5"])
+    assert pd.isna(first["target_path_5"])
+
+
+def test_forward_interval_labels_invalidate_unsupported_corporate_actions() -> None:
+    dates = pd.bdate_range("2024-01-02", periods=8)
+    source = pd.DataFrame(
+        {
+            "code": "000001",
+            "date": dates,
+            "open": np.arange(10.0, 18.0),
+            "high": np.arange(10.5, 18.5),
+            "low": np.arange(9.5, 17.5),
+            "close": np.arange(10.0, 18.0),
+            "amount": 100e6,
+            "turnover_pct": 1.0,
+            "float_market_cap": 10e9,
+            "is_st": False,
+            "trade_status": True,
+            "corporate_action_formula_status": [
+                "none",
+                "none",
+                "none",
+                "rights_issue_price_formula_only",
+                "none",
+                "none",
+                "none",
+                "none",
+            ],
+        }
+    )
+
+    panel = build_factor_panel(
+        start=str(dates[0].date()),
+        end=str(dates[-1].date()),
+        source=source,
+        min_history=1,
+        min_listing_sessions=1,
+        min_median_amount=0.0,
+        min_float_market_cap=0.0,
+    )
+
+    first = panel.iloc[0]
+    assert first["label_path_has_unsupported_action"]
     assert pd.isna(first["target_5"])
     assert pd.isna(first["target_path_5"])
 

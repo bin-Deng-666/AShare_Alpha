@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 
 from backtest.metrics import compute_metrics
+from data.scripts.corporate_action_status import CorporateActionFormulaStatus
 from strategy.rotating.config.params import DEFAULT_PARAMS, Params
 from strategy.rotating.engine.portfolio import run_portfolio
 from strategy.rotating.features.build_panel import (
@@ -19,6 +20,7 @@ from strategy.rotating.features.build_panel import (
     MODEL_INPUT_FEATURES,
     MODEL_TARGET_COLUMN,
     add_industry_size_residual_features,
+    add_price_limit_state_features,
     build_factor_panel,
 )
 from strategy.rotating.features.market_regime import (
@@ -115,6 +117,7 @@ def build_panel_dataset(
     output_root: str | Path = PANEL_ROOT,
     data_cutoff: str | None = None,
     include_industry_size_features: bool = False,
+    include_price_limit_features: bool = False,
 ) -> list[Path]:
     """Build year partitions with sufficient pre-history and future label bars."""
     first = pd.Timestamp(start).normalize()
@@ -137,6 +140,7 @@ def build_panel_dataset(
             str(partition_end.date()),
             source=source,
             include_industry_size_features=include_industry_size_features,
+            include_price_limit_features=include_price_limit_features,
         )
         output = root / f"year={year}" / "panel.parquet"
         _atomic_parquet(panel, output)
@@ -177,6 +181,70 @@ def augment_panel_dataset_with_industry_size_features(
         augmented = add_industry_size_residual_features(panel, copy=False)
         output = target_root / f"year={year}" / "panel.parquet"
         _atomic_parquet(augmented, output)
+        outputs.append(output)
+    return outputs
+
+
+def augment_panel_dataset_with_price_limit_features(
+    start: str,
+    end: str,
+    *,
+    input_root: str | Path,
+    output_root: str | Path,
+) -> list[Path]:
+    """Add five-session price-limit states to frozen panel partitions."""
+    first = pd.Timestamp(start).normalize()
+    last = pd.Timestamp(end).normalize()
+    source_root = Path(input_root)
+    target_root = Path(output_root)
+    if source_root.resolve() == target_root.resolve():
+        raise ValueError("price-limit augmentation requires a separate output root")
+
+    outputs: list[Path] = []
+    for year in range(first.year, last.year + 1):
+        partition_start = max(first, pd.Timestamp(year=year, month=1, day=1))
+        partition_end = min(last, pd.Timestamp(year=year, month=12, day=31))
+        current_path = source_root / f"year={year}" / "panel.parquet"
+        if not current_path.exists():
+            raise FileNotFoundError(
+                f"frozen panel partition not found: {current_path}"
+            )
+
+        # Thirty-one calendar days safely covers the four preceding A-share
+        # market sessions at a year boundary. Every physical read is capped at
+        # ``partition_end`` so a poisoned future row cannot enter the bundle.
+        load_start = partition_start - pd.DateOffset(days=31)
+        parts: list[pd.DataFrame] = []
+        for source_year in range(load_start.year, partition_end.year + 1):
+            source_path = source_root / f"year={source_year}" / "panel.parquet"
+            if not source_path.exists():
+                continue
+            parts.append(
+                pd.read_parquet(
+                    source_path,
+                    filters=[
+                        ("date", ">=", load_start),
+                        ("date", "<=", partition_end),
+                    ],
+                )
+            )
+        if not parts:
+            raise ValueError(
+                f"frozen panel has no rows for {load_start.date()} through "
+                f"{partition_end.date()}"
+            )
+        panel = pd.concat(parts, ignore_index=True)
+        normalized_dates = pd.to_datetime(panel["date"]).dt.normalize()
+        market_dates = pd.DatetimeIndex(normalized_dates.unique()).sort_values()
+        augmented = add_price_limit_state_features(
+            panel,
+            market_dates=market_dates,
+            copy=False,
+        )
+        use = normalized_dates.between(partition_start, partition_end)
+        output_frame = augmented.loc[use].reset_index(drop=True)
+        output = target_root / f"year={year}" / "panel.parquet"
+        _atomic_parquet(output_frame, output)
         outputs.append(output)
     return outputs
 
@@ -484,6 +552,27 @@ def _admission_diagnostics(result: dict[str, Any]) -> dict[str, Any]:
     equity = result["equity"].copy()
     trades = result["trades"].copy()
     pending = result["pending_orders"]
+    order_audit = result.get("order_audit", pd.DataFrame())
+    corporate_actions = result.get("corporate_actions", pd.DataFrame())
+    action_prior_shares = pd.to_numeric(
+        corporate_actions.get("prior_shares", pd.Series(dtype=float)),
+        errors="coerce",
+    )
+    action_new_shares = pd.to_numeric(
+        corporate_actions.get("new_shares", pd.Series(dtype=float)),
+        errors="coerce",
+    )
+    holder_entitlements_supported = corporate_actions.get(
+        "holder_entitlements_supported",
+        pd.Series(False, index=corporate_actions.index, dtype=bool),
+    ).fillna(False).astype(bool)
+    action_status = corporate_actions.get(
+        "formula_status",
+        pd.Series("", index=corporate_actions.index, dtype=str),
+    ).astype(str)
+    reference_mismatch = action_status.eq(
+        CorporateActionFormulaStatus.UNSUPPORTED_REFERENCE_MISMATCH.value
+    )
     by_year: dict[str, float] = {}
     if not equity.empty:
         equity["date"] = pd.to_datetime(equity["date"])
@@ -517,6 +606,22 @@ def _admission_diagnostics(result: dict[str, Any]) -> dict[str, Any]:
     return {
         "annual_returns": by_year,
         "end_pending_orders": int(len(pending)),
+        "end_pending_requested_amount": (
+            float(
+                pd.to_numeric(
+                    pending.get("requested_amount", pd.Series(dtype=float)),
+                    errors="coerce",
+                ).sum()
+            )
+            if not pending.empty
+            else 0.0
+        ),
+        "order_attempts": int(len(order_audit)),
+        "deferred_order_attempts": (
+            int(order_audit["outcome"].eq("deferred").sum())
+            if not order_audit.empty
+            else 0
+        ),
         "max_positions": (
             int(equity["n_positions"].max()) if not equity.empty else 0
         ),
@@ -525,6 +630,44 @@ def _admission_diagnostics(result: dict[str, Any]) -> dict[str, Any]:
         ),
         "largest_industry_abs_pnl_fraction": industry_concentration,
         "microcap_abs_pnl_fraction": microcap_pnl_fraction,
+        "corporate_action_events": int(len(corporate_actions)),
+        "corporate_action_prior_shares": float(action_prior_shares.sum()),
+        "corporate_action_new_shares": float(action_new_shares.sum()),
+        "corporate_action_credited_shares": float(
+            (action_new_shares - action_prior_shares).sum()
+        ),
+        "corporate_action_share_distribution_events": int(
+            action_new_shares.gt(action_prior_shares).sum()
+        ),
+        "corporate_action_unresolved_holder_entitlement_events": int(
+            (~holder_entitlements_supported).sum()
+        ),
+        "corporate_action_reference_mismatch_events": int(
+            reference_mismatch.sum()
+        ),
+        "corporate_action_reference_mismatch_entitlements_credited": int(
+            (reference_mismatch & holder_entitlements_supported).sum()
+        ),
+        "corporate_action_execution_policy_counts": (
+            {
+                str(policy): int(count)
+                for policy, count in corporate_actions[
+                    "execution_policy"
+                ].value_counts().items()
+            }
+            if not corporate_actions.empty
+            else {}
+        ),
+        "corporate_action_dividend_cash": (
+            float(corporate_actions["net_dividend_cash"].sum())
+            if not corporate_actions.empty
+            else 0.0
+        ),
+        "corporate_action_dividend_tax": (
+            float(corporate_actions["dividend_tax"].sum())
+            if not corporate_actions.empty
+            else 0.0
+        ),
         "dsr_evaluated": False,
     }
 
@@ -874,11 +1017,21 @@ def run_backtest_dataset(
         merged = metrics.pop("merged_daily", pd.DataFrame())
         result["equity"].to_csv(root / f"equity_{name}.csv", index=False)
         result["trades"].to_csv(root / f"trades_{name}.csv", index=False)
+        if not result.get("order_audit", pd.DataFrame()).empty:
+            result["order_audit"].to_csv(
+                root / f"order_audit_{name}.csv", index=False
+            )
+        if not result.get("corporate_actions", pd.DataFrame()).empty:
+            result["corporate_actions"].to_csv(
+                root / f"corporate_actions_{name}.csv", index=False
+            )
         if not merged.empty:
             merged.to_csv(root / f"benchmark_{name}.csv", index=False)
         if name == "gbrt_historical":
             result["equity"].to_csv(root / "ledger_daily.csv", index=False)
             result["trades"].to_csv(root / "trades.csv", index=False)
+            if not result.get("order_audit", pd.DataFrame()).empty:
+                result["order_audit"].to_csv(root / "order_audit.csv", index=False)
         summaries[name] = metrics
 
     market_gate_diagnostics = None

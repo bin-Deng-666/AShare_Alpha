@@ -30,8 +30,28 @@ from io import StringIO
 from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
+import numpy as np
 import pandas as pd
 import requests
+
+try:
+    from .corporate_action_status import (
+        CORPORATE_ACTION_ASOF_SOURCE,
+        CORPORATE_ACTION_ASOF_UNIVERSE_RULE,
+        CorporateActionFormulaStatus,
+        has_supported_price_formula,
+        requires_conservative_invalidation,
+    )
+    from .price_rules import cny_cent_key, round_cny_price_to_cent
+except ImportError:
+    from corporate_action_status import (
+        CORPORATE_ACTION_ASOF_SOURCE,
+        CORPORATE_ACTION_ASOF_UNIVERSE_RULE,
+        CorporateActionFormulaStatus,
+        has_supported_price_formula,
+        requires_conservative_invalidation,
+    )
+    from price_rules import cny_cent_key, round_cny_price_to_cent
 
 try:
     import akshare as ak
@@ -64,6 +84,15 @@ SINA_FINANCIAL_URL = (
     "https://quotes.sina.cn/cn/api/openapi.php/"
     "CompanyFinanceService.getFinanceReport2022"
 )
+_round_positive_price_to_cent = round_cny_price_to_cent
+CNINFO_ALLOTMENT_FIELD_INDEX = {
+    "rights_issue_price": 8,
+    "rights_issue_per_10": 9,
+    "shares_before_10k": 10,
+    "ex_date": 18,
+    "code": 21,
+    "shares_after_10k": 50,
+}
 
 
 def setup_logging() -> None:
@@ -1189,10 +1218,11 @@ def build_financial_availability(config: Dict) -> None:
 
 def fetch_corporate_actions(
     session: requests.Session,
-    code: str,
+    code: str | None,
     throttle: Throttle,
+    data_cutoff: str | pd.Timestamp | None = None,
 ) -> pd.DataFrame:
-    """Fetch dividend, bonus-share and transfer events from Eastmoney."""
+    """Fetch dividend/transfer events with an optional server-side cutoff."""
     output_columns = [
         "code", "name", "report_date", "plan_notice_date", "publish_date",
         "notice_date", "record_date", "ex_date", "cash_dividend_per_10",
@@ -1202,6 +1232,15 @@ def fetch_corporate_actions(
     ]
     rows = []
     page_number = 1
+    filter_parts = []
+    if code is not None:
+        filter_parts.append(f'(SECURITY_CODE="{str(code).zfill(6)}")')
+    if data_cutoff is not None:
+        cutoff = pd.Timestamp(data_cutoff).normalize()
+        filter_parts.append(
+            f"(EX_DIVIDEND_DATE<='{cutoff.date().isoformat()}')"
+        )
+    filter_expression = "".join(filter_parts)
     while True:
         throttle.wait()
         response = session.get(
@@ -1209,9 +1248,9 @@ def fetch_corporate_actions(
             params={
                 "reportName": "RPT_SHAREBONUS_DET",
                 "columns": "ALL",
-                "filter": f'(SECURITY_CODE="{code}")',
+                "filter": filter_expression,
                 "pageNumber": str(page_number),
-                "pageSize": "100",
+                "pageSize": "500",
                 "sortColumns": "EX_DIVIDEND_DATE",
                 "sortTypes": "-1",
                 "source": "WEB",
@@ -1220,6 +1259,7 @@ def fetch_corporate_actions(
             timeout=20,
         )
         response.raise_for_status()
+        response.encoding = "utf-8"
         payload = response.json()
         if not payload.get("success"):
             message = payload.get("message") or ""
@@ -1276,13 +1316,18 @@ def fetch_corporate_actions(
     ):
         frame[column] = pd.to_numeric(frame[column], errors="coerce")
     frame["source"] = "eastmoney"
-    return (
+    result = (
         frame[columns + ["source"]]
         .sort_values(["ex_date", "publish_date"], na_position="last")
         .drop_duplicates(
             ["code", "report_date", "ex_date", "plan_description"], keep="last"
         )
     )
+    if data_cutoff is not None:
+        observed = result["ex_date"].dropna()
+        if observed.gt(cutoff).any():
+            raise RuntimeError("Eastmoney violated the server-side data cutoff")
+    return result
 
 
 def build_corporate_actions(
@@ -1334,6 +1379,721 @@ def build_corporate_actions(
             "updated_at": dt.datetime.now(),
         },
         STATE / "corporate_action_failures.json",
+    )
+
+
+CORPORATE_ACTION_EVENT_COLUMNS = [
+    "code",
+    "ex_date",
+    "cash_dividend_per_10",
+    "bonus_transfer_per_10",
+    "rights_issue_per_10",
+    "rights_issue_price",
+    "share_consolidation_ratio",
+    "shares_before",
+    "shares_after",
+    "observed_reference_price",
+    "formula_status",
+    "source",
+]
+
+
+def _empty_corporate_action_events() -> pd.DataFrame:
+    """Return an empty, parquet-safe schema for complete per-symbol coverage."""
+    return pd.DataFrame(
+        {
+            "code": pd.Series(dtype="string"),
+            "ex_date": pd.Series(dtype="datetime64[ns]"),
+            "cash_dividend_per_10": pd.Series(dtype="float64"),
+            "bonus_transfer_per_10": pd.Series(dtype="float64"),
+            "rights_issue_per_10": pd.Series(dtype="float64"),
+            "rights_issue_price": pd.Series(dtype="float64"),
+            "share_consolidation_ratio": pd.Series(dtype="float64"),
+            "shares_before": pd.Series(dtype="float64"),
+            "shares_after": pd.Series(dtype="float64"),
+            "observed_reference_price": pd.Series(dtype="float64"),
+            "formula_status": pd.Series(dtype="string"),
+            "source": pd.Series(dtype="string"),
+        }
+    )
+
+
+def _sharebonus_events(frame: pd.DataFrame) -> pd.DataFrame:
+    """Normalize server-bounded Eastmoney cash/share distributions."""
+    if frame.empty:
+        return _empty_corporate_action_events()
+    events = frame.copy()
+    events["code"] = events["code"].astype(str).str.zfill(6)
+    events["ex_date"] = pd.to_datetime(
+        events["ex_date"], errors="coerce"
+    ).dt.normalize()
+    events = events.loc[events["ex_date"].notna()].copy()
+    if events.empty:
+        return _empty_corporate_action_events()
+    for column in (
+        "cash_dividend_per_10",
+        "bonus_share_per_10",
+        "transfer_share_per_10",
+        "bonus_transfer_per_10",
+    ):
+        if column not in events:
+            events[column] = np.nan
+        events[column] = pd.to_numeric(events[column], errors="coerce")
+    component_total = (
+        events["bonus_share_per_10"].fillna(0.0)
+        + events["transfer_share_per_10"].fillna(0.0)
+    )
+    distribution = events["bonus_transfer_per_10"].where(
+        events["bonus_transfer_per_10"].notna(), component_total
+    ).fillna(0.0)
+    cash = events["cash_dividend_per_10"].fillna(0.0)
+    malformed = cash.lt(0.0) | distribution.lt(0.0)
+    status = np.select(
+        [malformed, cash.gt(0.0) | distribution.gt(0.0)],
+        [
+            CorporateActionFormulaStatus.UNSUPPORTED_MALFORMED_TERMS.value,
+            CorporateActionFormulaStatus.SUPPORTED_STANDARD.value,
+        ],
+        default=CorporateActionFormulaStatus.NO_PRICE_ADJUSTMENT.value,
+    )
+    result = pd.DataFrame(
+        {
+            "code": events["code"],
+            "ex_date": events["ex_date"],
+            "cash_dividend_per_10": cash,
+            "bonus_transfer_per_10": distribution,
+            "rights_issue_per_10": 0.0,
+            "rights_issue_price": 0.0,
+            "share_consolidation_ratio": 0.0,
+            "shares_before": np.nan,
+            "shares_after": np.nan,
+            "observed_reference_price": np.nan,
+            "formula_status": status,
+            "source": "eastmoney_sharebonus_server_asof",
+        }
+    )
+    return (
+        result[CORPORATE_ACTION_EVENT_COLUMNS]
+        .sort_values(["code", "ex_date"])
+        .drop_duplicates(["code", "ex_date"], keep="last")
+        .reset_index(drop=True)
+    )
+
+
+def fetch_cninfo_allotment_events(
+    code: str,
+    data_cutoff: str | pd.Timestamp,
+) -> pd.DataFrame:
+    """Fetch rights issues from CNInfo with server-side start/end dates."""
+    if ak is None:
+        raise RuntimeError("AkShare is required for CNInfo allotment events")
+    cutoff = pd.Timestamp(data_cutoff).normalize()
+    raw = ak.stock_allotment_cninfo(
+        symbol=str(code).zfill(6),
+        start_date="19700101",
+        end_date=cutoff.strftime("%Y%m%d"),
+    )
+    if raw is None or raw.empty:
+        return _empty_corporate_action_events()
+    if raw.shape[1] <= max(CNINFO_ALLOTMENT_FIELD_INDEX.values()):
+        raise RuntimeError("CNInfo allotment response schema is incomplete")
+    response_codes = (
+        raw.iloc[:, CNINFO_ALLOTMENT_FIELD_INDEX["code"]]
+        .dropna()
+        .astype(str)
+        .str.zfill(6)
+    )
+    if not response_codes.empty and not response_codes.eq(
+        str(code).zfill(6)
+    ).all():
+        raise RuntimeError("CNInfo allotment response code does not match request")
+    ex_date = pd.to_datetime(
+        raw.iloc[:, CNINFO_ALLOTMENT_FIELD_INDEX["ex_date"]],
+        errors="coerce",
+    ).dt.normalize()
+    through_cutoff = ex_date.notna() & ex_date.le(cutoff)
+    frame = raw.loc[through_cutoff].copy()
+    ex_date = ex_date.loc[through_cutoff]
+    if frame.empty:
+        return _empty_corporate_action_events()
+    rights_price = pd.to_numeric(
+        frame.iloc[:, CNINFO_ALLOTMENT_FIELD_INDEX["rights_issue_price"]],
+        errors="coerce",
+    )
+    rights_ratio = pd.to_numeric(
+        frame.iloc[:, CNINFO_ALLOTMENT_FIELD_INDEX["rights_issue_per_10"]],
+        errors="coerce",
+    )
+    shares_before = pd.to_numeric(
+        frame.iloc[:, CNINFO_ALLOTMENT_FIELD_INDEX["shares_before_10k"]],
+        errors="coerce",
+    ) * 10_000.0
+    shares_after = pd.to_numeric(
+        frame.iloc[:, CNINFO_ALLOTMENT_FIELD_INDEX["shares_after_10k"]],
+        errors="coerce",
+    ) * 10_000.0
+    malformed = (
+        rights_ratio.isna()
+        | rights_ratio.le(0.0)
+        | rights_price.isna()
+        | rights_price.lt(0.0)
+    )
+    result = pd.DataFrame(
+        {
+            "code": str(code).zfill(6),
+            "ex_date": ex_date.to_numpy(),
+            "cash_dividend_per_10": 0.0,
+            "bonus_transfer_per_10": 0.0,
+            "rights_issue_per_10": rights_ratio.to_numpy(),
+            "rights_issue_price": rights_price.to_numpy(),
+            "share_consolidation_ratio": 0.0,
+            "shares_before": shares_before.to_numpy(),
+            "shares_after": shares_after.to_numpy(),
+            "observed_reference_price": np.nan,
+            "formula_status": np.where(
+                malformed.to_numpy(),
+                CorporateActionFormulaStatus.UNSUPPORTED_MALFORMED_TERMS.value,
+                CorporateActionFormulaStatus.RIGHTS_ISSUE_PRICE_ONLY.value,
+            ),
+            "source": "cninfo_allotment_server_asof",
+        }
+    )
+    if pd.to_datetime(result["ex_date"]).gt(cutoff).any():
+        raise RuntimeError("CNInfo violated the server-side data cutoff")
+    return (
+        result[CORPORATE_ACTION_EVENT_COLUMNS]
+        .sort_values("ex_date")
+        .drop_duplicates("ex_date", keep="last")
+        .reset_index(drop=True)
+    )
+
+
+def _combine_corporate_action_events(*frames: pd.DataFrame) -> pd.DataFrame:
+    """Combine same-day public-source terms without dropping unsupported rows."""
+    available = [frame for frame in frames if not frame.empty]
+    if not available:
+        return _empty_corporate_action_events()
+    combined = pd.concat(available, ignore_index=True)
+    records: list[dict[str, object]] = []
+    for (code, ex_date), group in combined.groupby(
+        ["code", "ex_date"], sort=True, dropna=False
+    ):
+        numeric = {}
+        for column in (
+            "cash_dividend_per_10",
+            "bonus_transfer_per_10",
+            "rights_issue_per_10",
+            "share_consolidation_ratio",
+        ):
+            numeric[column] = float(
+                pd.to_numeric(group[column], errors="coerce").fillna(0.0).sum()
+            )
+        rights_prices = pd.to_numeric(
+            group["rights_issue_price"], errors="coerce"
+        ).dropna()
+        before = pd.to_numeric(group["shares_before"], errors="coerce").dropna()
+        after = pd.to_numeric(group["shares_after"], errors="coerce").dropna()
+        observed = pd.to_numeric(
+            group["observed_reference_price"], errors="coerce"
+        ).dropna()
+        statuses = group["formula_status"].map(str)
+        if statuses.eq(
+            CorporateActionFormulaStatus.UNSUPPORTED_MALFORMED_TERMS.value
+        ).any():
+            formula_status = (
+                CorporateActionFormulaStatus.UNSUPPORTED_MALFORMED_TERMS.value
+            )
+        elif numeric["rights_issue_per_10"] > 0.0:
+            formula_status = CorporateActionFormulaStatus.RIGHTS_ISSUE_PRICE_ONLY.value
+        elif (
+            numeric["cash_dividend_per_10"] > 0.0
+            or numeric["bonus_transfer_per_10"] > 0.0
+        ):
+            formula_status = CorporateActionFormulaStatus.SUPPORTED_STANDARD.value
+        elif statuses.map(requires_conservative_invalidation).any():
+            formula_status = (
+                CorporateActionFormulaStatus.UNSUPPORTED_MISSING_FORMULA_STATUS.value
+            )
+        else:
+            formula_status = CorporateActionFormulaStatus.NO_PRICE_ADJUSTMENT.value
+        records.append(
+            {
+                "code": str(code).zfill(6),
+                "ex_date": pd.Timestamp(ex_date).normalize(),
+                **numeric,
+                "rights_issue_price": (
+                    float(rights_prices.iloc[-1]) if not rights_prices.empty else 0.0
+                ),
+                "shares_before": float(before.iloc[-1]) if not before.empty else np.nan,
+                "shares_after": float(after.iloc[-1]) if not after.empty else np.nan,
+                "observed_reference_price": (
+                    float(observed.iloc[-1]) if not observed.empty else np.nan
+                ),
+                "formula_status": formula_status,
+                "source": "+".join(sorted(set(group["source"].map(str)))),
+            }
+        )
+    return pd.DataFrame.from_records(
+        records, columns=CORPORATE_ACTION_EVENT_COLUMNS
+    ).sort_values("ex_date").reset_index(drop=True)
+
+
+def fetch_baostock_preclose(
+    code: str,
+    start_date: str | pd.Timestamp,
+    data_cutoff: str | pd.Timestamp,
+) -> pd.DataFrame:
+    """Fetch exchange reference prices with a server-side BaoStock end date."""
+    if bs is None:
+        raise RuntimeError("BaoStock is required for reference-price validation")
+    start = pd.Timestamp(start_date).normalize()
+    cutoff = pd.Timestamp(data_cutoff).normalize()
+    symbol = (
+        f"sh.{str(code).zfill(6)}"
+        if exchange_for(str(code).zfill(6)) == "SH"
+        else f"sz.{str(code).zfill(6)}"
+    )
+    result = bs.query_history_k_data_plus(
+        symbol,
+        "date,preclose",
+        start_date=str(start.date()),
+        end_date=str(cutoff.date()),
+        frequency="d",
+        adjustflag="3",
+    )
+    if result.error_code != "0":
+        raise RuntimeError(result.error_msg or result.error_code)
+    rows = []
+    while result.next():
+        rows.append(result.get_row_data())
+    frame = pd.DataFrame(rows, columns=["date", "observed_reference_price"])
+    if frame.empty:
+        return pd.DataFrame(
+            {
+                "date": pd.Series(dtype="datetime64[ns]"),
+                "observed_reference_price": pd.Series(dtype="float64"),
+            }
+        )
+    frame["date"] = pd.to_datetime(frame["date"], errors="coerce").dt.normalize()
+    frame["observed_reference_price"] = pd.to_numeric(
+        frame["observed_reference_price"], errors="coerce"
+    )
+    frame = frame.dropna(subset=["date"]).drop_duplicates("date", keep="last")
+    if frame["date"].gt(cutoff).any():
+        raise RuntimeError("BaoStock violated the server-side data cutoff")
+    return frame.sort_values("date").reset_index(drop=True)
+
+
+def _apply_reference_price_validation(
+    code: str,
+    raw_bars: pd.DataFrame,
+    events: pd.DataFrame,
+    observed_references: pd.DataFrame,
+) -> tuple[pd.DataFrame, dict[str, int]]:
+    """Detect every unexplained exchange-reference adjustment before cutoff."""
+    bars = raw_bars[["date", "close"]].copy()
+    bars["date"] = pd.to_datetime(bars["date"], errors="coerce").dt.normalize()
+    bars["close"] = pd.to_numeric(bars["close"], errors="coerce")
+    bars = bars.dropna(subset=["date"]).sort_values("date")
+    bars = bars.drop_duplicates("date", keep="last")
+    bars["previous_raw_close"] = bars["close"].shift(1)
+    references = observed_references.copy()
+    references["date"] = pd.to_datetime(
+        references["date"], errors="coerce"
+    ).dt.normalize()
+    references["observed_reference_price"] = pd.to_numeric(
+        references["observed_reference_price"], errors="coerce"
+    )
+    bars = bars.merge(references, on="date", how="left", validate="one_to_one")
+    eligible = bars["previous_raw_close"].gt(0.0)
+    missing = eligible & ~bars["observed_reference_price"].gt(0.0)
+
+    validated = events.copy()
+    if validated.empty:
+        validated = _empty_corporate_action_events()
+    validated["ex_date"] = pd.to_datetime(
+        validated["ex_date"], errors="coerce"
+    ).dt.normalize()
+    event_by_date = {
+        pd.Timestamp(row.ex_date): index
+        for index, row in validated.iterrows()
+        if pd.notna(row.ex_date)
+    }
+    detected_consolidations = 0
+    detected_unclassified = 0
+    reference_mismatches = 0
+    reference_gap_invalidations = 0
+
+    def numeric_or_zero(value: object) -> float:
+        numeric = pd.to_numeric(value, errors="coerce")
+        return 0.0 if pd.isna(numeric) else float(numeric)
+
+    def append_synthetic_reference_event(
+        frame: pd.DataFrame,
+        *,
+        trade_date: pd.Timestamp,
+        observed_reference_price: float,
+        status: CorporateActionFormulaStatus,
+        source: str,
+    ) -> pd.DataFrame:
+        new_event = pd.DataFrame.from_records(
+            [
+                {
+                    "code": str(code).zfill(6),
+                    "ex_date": trade_date,
+                    "cash_dividend_per_10": 0.0,
+                    "bonus_transfer_per_10": 0.0,
+                    "rights_issue_per_10": 0.0,
+                    "rights_issue_price": 0.0,
+                    "share_consolidation_ratio": np.nan,
+                    "shares_before": np.nan,
+                    "shares_after": np.nan,
+                    "observed_reference_price": observed_reference_price,
+                    "formula_status": status.value,
+                    "source": source,
+                }
+            ],
+            columns=CORPORATE_ACTION_EVENT_COLUMNS,
+        )
+        if frame.empty:
+            result = new_event.copy()
+        else:
+            result = pd.concat([frame, new_event], ignore_index=True)
+        event_by_date[trade_date] = int(result.index[-1])
+        return result
+
+    for row in bars.loc[missing].itertuples(index=False):
+        trade_date = pd.Timestamp(row.date)
+        event_index = event_by_date.get(trade_date)
+        gap_status = (
+            CorporateActionFormulaStatus.UNSUPPORTED_MISSING_REFERENCE_PRICE
+            if event_index is None
+            else (
+                CorporateActionFormulaStatus
+                .UNSUPPORTED_DECLARED_ACTION_MISSING_REFERENCE_PRICE
+            )
+        )
+        if event_index is None:
+            validated = append_synthetic_reference_event(
+                validated,
+                trade_date=trade_date,
+                observed_reference_price=np.nan,
+                status=gap_status,
+                source="baostock_preclose_server_asof_gap",
+            )
+        else:
+            validated.loc[event_index, "observed_reference_price"] = np.nan
+            validated.loc[event_index, "formula_status"] = gap_status.value
+            current_source = str(validated.loc[event_index, "source"])
+            if "baostock_preclose_server_asof_gap" not in current_source:
+                validated.loc[event_index, "source"] = (
+                    current_source + "+baostock_preclose_server_asof_gap"
+                )
+        reference_gap_invalidations += 1
+
+    for row in bars.loc[eligible & ~missing].itertuples(index=False):
+        trade_date = pd.Timestamp(row.date)
+        previous_close = float(row.previous_raw_close)
+        observed = float(row.observed_reference_price)
+        event_index = event_by_date.get(trade_date)
+        if event_index is None:
+            expected = previous_close
+            if cny_cent_key(expected) == cny_cent_key(observed):
+                continue
+            status = (
+                CorporateActionFormulaStatus.UNSUPPORTED_SHARE_CONSOLIDATION
+                if cny_cent_key(observed) > cny_cent_key(previous_close)
+                else CorporateActionFormulaStatus.UNSUPPORTED_UNCLASSIFIED_SHARE_CHANGE
+            )
+            if status is CorporateActionFormulaStatus.UNSUPPORTED_SHARE_CONSOLIDATION:
+                detected_consolidations += 1
+            else:
+                detected_unclassified += 1
+            validated = append_synthetic_reference_event(
+                validated,
+                trade_date=trade_date,
+                observed_reference_price=observed,
+                status=status,
+                source="baostock_preclose_server_asof",
+            )
+            continue
+
+        event = validated.loc[event_index]
+        cash = numeric_or_zero(event.get("cash_dividend_per_10")) / 10.0
+        distribution = (
+            numeric_or_zero(event.get("bonus_transfer_per_10")) / 10.0
+        )
+        rights = numeric_or_zero(event.get("rights_issue_per_10")) / 10.0
+        rights_price = numeric_or_zero(event.get("rights_issue_price"))
+        status = str(event.get("formula_status"))
+        expected = previous_close
+        if has_supported_price_formula(status):
+            expected = (
+                previous_close - cash + rights_price * rights
+            ) / (1.0 + distribution + rights)
+        validated.loc[event_index, "observed_reference_price"] = observed
+        current_source = str(validated.loc[event_index, "source"])
+        if "baostock_preclose_server_asof" not in current_source:
+            validated.loc[event_index, "source"] = (
+                current_source + "+baostock_preclose_server_asof"
+            )
+        if cny_cent_key(expected) != cny_cent_key(observed):
+            validated.loc[event_index, "formula_status"] = (
+                CorporateActionFormulaStatus.UNSUPPORTED_REFERENCE_MISMATCH.value
+            )
+            reference_mismatches += 1
+
+    validated = (
+        validated[CORPORATE_ACTION_EVENT_COLUMNS]
+        .sort_values("ex_date")
+        .drop_duplicates("ex_date", keep="last")
+        .reset_index(drop=True)
+    )
+    return validated, {
+        "raw_reference_rows": int(eligible.sum()),
+        "checked_reference_rows": int((eligible & ~missing).sum()),
+        "missing_reference_rows": int(missing.sum()),
+        "reference_gap_invalidations": reference_gap_invalidations,
+        "detected_share_consolidations": detected_consolidations,
+        "detected_unclassified_share_changes": detected_unclassified,
+        "reference_mismatches": reference_mismatches,
+    }
+
+
+def _frozen_sh_sz_universe(
+    data_cutoff: str | pd.Timestamp,
+    codes: Optional[Sequence[str]] = None,
+) -> pd.DataFrame:
+    """Return the current master restricted to symbols listed by the cutoff."""
+    cutoff = pd.Timestamp(data_cutoff).normalize()
+    universe = pd.read_parquet(
+        PARQUET / "security_master" / "security_master.parquet",
+        columns=["code", "exchange", "list_date"],
+    )
+    universe["code"] = universe["code"].astype(str).str.zfill(6)
+    universe["list_date"] = pd.to_datetime(
+        universe["list_date"], errors="coerce"
+    ).dt.normalize()
+    universe = universe.loc[
+        universe["code"].map(is_a_share)
+        & universe["exchange"].isin(["SH", "SZ"])
+        & universe["list_date"].notna()
+        & universe["list_date"].le(cutoff)
+    ].drop_duplicates("code")
+    if codes:
+        wanted = {str(code).zfill(6) for code in codes}
+        universe = universe.loc[universe["code"].isin(wanted)]
+    return universe.sort_values("code").reset_index(drop=True)
+
+
+def build_corporate_action_events(
+    config: Dict,
+    limit: Optional[int] = None,
+    codes: Optional[Sequence[str]] = None,
+    force: bool = False,
+    data_cutoff: str | pd.Timestamp | None = None,
+    max_workers: int = 4,
+) -> None:
+    """Persist a server-side-as-of cash/share-distribution and rights layer."""
+    cutoff = (
+        pd.Timestamp(data_cutoff).normalize()
+        if data_cutoff is not None
+        else pd.Timestamp.today().normalize()
+    )
+    universe = _frozen_sh_sz_universe(cutoff, codes)
+    if limit:
+        universe = universe.head(limit)
+    expected_codes = universe["code"].tolist()
+    state_path = STATE / "corporate_action_event_coverage.json"
+    previous_state: dict[str, object] = {}
+    if state_path.exists() and not force:
+        previous_state = json.loads(state_path.read_text(encoding="utf-8"))
+    state_matches = (
+        previous_state.get("source") == CORPORATE_ACTION_ASOF_SOURCE
+        and previous_state.get("query_boundary") == "server_side_end_date"
+        and previous_state.get("universe_rule")
+        == CORPORATE_ACTION_ASOF_UNIVERSE_RULE
+        and previous_state.get("physical_read_cutoff") == str(cutoff.date())
+    )
+    previous_completed = (
+        set(previous_state.get("completed_codes", [])) if state_matches else set()
+    )
+    output_dir = PARQUET / "corporate_action_events"
+    reusable_codes = {
+        code
+        for code in expected_codes
+        if code in previous_completed and (output_dir / f"{code}.parquet").exists()
+    }
+    codes_to_fetch = [
+        code for code in expected_codes if force or code not in reusable_codes
+    ]
+    failures: list[dict[str, str]] = []
+    completed_codes = set(reusable_codes)
+    standard_query_rows = 0
+    reference_validation: defaultdict[str, int] = defaultdict(int)
+    if reusable_codes:
+        standard_query_rows = int(previous_state.get("standard_query_rows", 0))
+        reference_validation.update(
+            {
+                str(key): int(value)
+                for key, value in dict(
+                    previous_state.get("reference_validation", {})
+                ).items()
+            }
+        )
+    preclose_completed_codes = set(
+        previous_state.get("preclose_completed_codes", [])
+    ) & reusable_codes
+    if codes_to_fetch:
+        session = requests.Session()
+        session.headers.update(
+            {"User-Agent": UA, "Referer": "https://data.eastmoney.com/"}
+        )
+        throttle = Throttle(config["eastmoney_min_interval_seconds"])
+        standard_actions = retry(
+            lambda: fetch_corporate_actions(
+                session, None, throttle, data_cutoff=cutoff
+            ),
+            "server-as-of corporate actions",
+            attempts=config["retries"],
+            base_sleep=config["retry_base_seconds"],
+        )
+        standard_actions = standard_actions.loc[
+            standard_actions["code"].astype(str).str.zfill(6).isin(
+                set(expected_codes)
+            )
+        ].copy()
+        standard_events = _sharebonus_events(standard_actions)
+        standard_query_rows = int(len(standard_events))
+        standard_by_code = {
+            str(code): group.reset_index(drop=True)
+            for code, group in standard_events.groupby("code", sort=False)
+        }
+
+        def fetch_rights(code: str) -> pd.DataFrame:
+            return retry(
+                lambda: fetch_cninfo_allotment_events(code, cutoff),
+                f"CNInfo allotment events {code}",
+                attempts=config["retries"],
+                base_sleep=config["retry_base_seconds"],
+            )
+
+        combined_by_code: dict[str, pd.DataFrame] = {}
+        with ThreadPoolExecutor(max_workers=max(1, max_workers)) as executor:
+            futures = {
+                executor.submit(fetch_rights, code): code
+                for code in codes_to_fetch
+            }
+            for index, future in enumerate(as_completed(futures), start=1):
+                code = futures[future]
+                try:
+                    rights = future.result()
+                    frame = _combine_corporate_action_events(
+                        standard_by_code.get(
+                            code, _empty_corporate_action_events()
+                        ),
+                        rights,
+                    )
+                    if not frame.empty and pd.to_datetime(frame["ex_date"]).gt(
+                        cutoff
+                    ).any():
+                        raise RuntimeError(
+                            "corporate-action event exceeded the data cutoff"
+                        )
+                    combined_by_code[code] = frame
+                except Exception as exc:  # noqa: BLE001
+                    failures.append({"code": code, "error": str(exc)})
+                if index % 250 == 0:
+                    logging.info(
+                        "server-as-of corporate-action progress: %s/%s",
+                        index,
+                        len(codes_to_fetch),
+                    )
+
+        if bs is None:
+            raise RuntimeError(
+                "BaoStock is required for complete reference-price validation"
+            )
+        login_result = bs.login()
+        if login_result.error_code != "0":
+            raise RuntimeError(login_result.error_msg or login_result.error_code)
+        try:
+            raw_dir = PARQUET / "daily_bars" / "adjustment=raw"
+            for index, code in enumerate(codes_to_fetch, start=1):
+                if code not in combined_by_code:
+                    continue
+                try:
+                    observed = retry(
+                        lambda code=code: fetch_baostock_preclose(
+                            code,
+                            config["start_date"],
+                            cutoff,
+                        ),
+                        f"BaoStock preclose {code}",
+                        attempts=config["retries"],
+                        base_sleep=config["retry_base_seconds"],
+                    )
+                    raw_path = raw_dir / f"{code}.parquet"
+                    if raw_path.exists():
+                        raw_bars = _read_parquet_through_date(
+                            raw_path,
+                            date_column="date",
+                            data_cutoff=cutoff,
+                            columns=["date", "close"],
+                        )
+                        frame, diagnostics = _apply_reference_price_validation(
+                            code,
+                            raw_bars,
+                            combined_by_code[code],
+                            observed,
+                        )
+                        for key, value in diagnostics.items():
+                            reference_validation[key] += int(value)
+                    else:
+                        frame = combined_by_code[code]
+                        reference_validation["codes_without_raw_bars"] += 1
+                    atomic_parquet(frame, output_dir / f"{code}.parquet")
+                    preclose_completed_codes.add(code)
+                    completed_codes.add(code)
+                except Exception as exc:  # noqa: BLE001
+                    failures.append({"code": code, "error": str(exc)})
+                if index % 250 == 0:
+                    logging.info(
+                        "server-as-of preclose validation: %s/%s",
+                        index,
+                        len(codes_to_fetch),
+                    )
+        finally:
+            bs.logout()
+
+    empty_codes: list[str] = []
+    status_counts: defaultdict[str, int] = defaultdict(int)
+    for code in sorted(completed_codes):
+        existing = pd.read_parquet(output_dir / f"{code}.parquet")
+        if existing.empty:
+            empty_codes.append(code)
+        for status, count in existing["formula_status"].value_counts().items():
+            status_counts[str(status)] += int(count)
+    atomic_json(
+        {
+            "files_expected": int(len(expected_codes)),
+            "failures": failures,
+            "empty_codes": empty_codes,
+            "formula_status_counts": dict(sorted(status_counts.items())),
+            "completed_codes": sorted(completed_codes),
+            "preclose_completed_codes": sorted(preclose_completed_codes),
+            "standard_query_rows": standard_query_rows,
+            "reference_validation": dict(sorted(reference_validation.items())),
+            "preclose_query_start": str(
+                pd.Timestamp(config["start_date"]).date()
+            ),
+            "source": CORPORATE_ACTION_ASOF_SOURCE,
+            "query_boundary": "server_side_end_date",
+            "universe_rule": CORPORATE_ACTION_ASOF_UNIVERSE_RULE,
+            "physical_read_cutoff": str(cutoff.date()),
+            "updated_at": dt.datetime.now(),
+        },
+        state_path,
     )
 
 
@@ -1787,16 +2547,415 @@ def _limit_pct_for_row(
     return 0.10
 
 
+def _corporate_action_terms_for_bars(
+    bars: pd.DataFrame,
+    actions: pd.DataFrame,
+) -> pd.DataFrame:
+    """Map one validated ex-date action record onto each raw bar."""
+    result = pd.DataFrame(
+        {
+            "cash_dividend_per_share": 0.0,
+            "share_distribution_ratio": 0.0,
+            "rights_issue_ratio": 0.0,
+            "rights_issue_price": 0.0,
+            "observed_reference_price": np.nan,
+            "price_formula_supported": False,
+            "has_corporate_action": False,
+            "corporate_action_formula_status": (
+                CorporateActionFormulaStatus.NONE.value
+            ),
+        },
+        index=bars.index,
+    )
+    if actions.empty or "ex_date" not in actions:
+        return result
+
+    action_frame = actions.copy()
+    action_frame["ex_date"] = pd.to_datetime(
+        action_frame["ex_date"], errors="coerce"
+    ).dt.normalize()
+    action_frame = action_frame.loc[action_frame["ex_date"].notna()].copy()
+    if "report_date" in action_frame:
+        # Some early Eastmoney rows attach a future reporting period to an
+        # older ex-date. Such a plan cannot define that earlier day's price
+        # reference and must not replace a chronologically valid record.
+        action_frame["report_date"] = pd.to_datetime(
+            action_frame["report_date"], errors="coerce"
+        ).dt.normalize()
+        action_frame = action_frame.loc[
+            action_frame["report_date"].isna()
+            | action_frame["report_date"].le(action_frame["ex_date"])
+        ].copy()
+    if action_frame.empty:
+        return result
+    for column in (
+        "cash_dividend_per_10",
+        "bonus_share_per_10",
+        "transfer_share_per_10",
+        "bonus_transfer_per_10",
+        "rights_issue_per_10",
+        "rights_issue_price",
+        "observed_reference_price",
+    ):
+        if column not in action_frame:
+            action_frame[column] = np.nan
+        action_frame[column] = pd.to_numeric(
+            action_frame[column], errors="coerce"
+        )
+    if "formula_status" not in action_frame:
+        action_frame["formula_status"] = (
+            CorporateActionFormulaStatus.SUPPORTED_STANDARD.value
+        )
+    action_frame["formula_status"] = action_frame["formula_status"].fillna(
+        CorporateActionFormulaStatus.UNSUPPORTED_MISSING_FORMULA_STATUS.value
+    ).astype(str)
+
+    component_total = (
+        action_frame["bonus_share_per_10"].fillna(0.0)
+        + action_frame["transfer_share_per_10"].fillna(0.0)
+    )
+    share_distribution = action_frame["bonus_transfer_per_10"].where(
+        action_frame["bonus_transfer_per_10"].notna(), component_total
+    )
+    action_frame["_cash_per_share"] = (
+        action_frame["cash_dividend_per_10"].fillna(0.0) / 10.0
+    )
+    action_frame["_share_distribution"] = share_distribution.fillna(0.0) / 10.0
+    action_frame["_rights_issue_ratio"] = (
+        action_frame["rights_issue_per_10"].fillna(0.0) / 10.0
+    )
+    action_frame["_rights_issue_price"] = action_frame[
+        "rights_issue_price"
+    ].fillna(0.0)
+    action_frame["_observed_reference_price"] = action_frame[
+        "observed_reference_price"
+    ]
+    action_frame["_price_formula_supported"] = action_frame[
+        "formula_status"
+    ].map(has_supported_price_formula)
+    action_frame["_has_event"] = True
+    if "publish_date" in action_frame:
+        action_frame["publish_date"] = pd.to_datetime(
+            action_frame["publish_date"], errors="coerce"
+        )
+        action_frame = action_frame.sort_values(
+            ["ex_date", "publish_date"], na_position="first"
+        )
+    action_frame = action_frame.drop_duplicates("ex_date", keep="last")
+    action_by_date = action_frame.set_index("ex_date")[
+        [
+            "_cash_per_share",
+            "_share_distribution",
+            "_rights_issue_ratio",
+            "_rights_issue_price",
+            "_observed_reference_price",
+            "_price_formula_supported",
+            "_has_event",
+            "formula_status",
+        ]
+    ]
+    dates = pd.to_datetime(bars["date"]).dt.normalize()
+    result["cash_dividend_per_share"] = dates.map(
+        action_by_date["_cash_per_share"]
+    ).fillna(0.0)
+    result["share_distribution_ratio"] = dates.map(
+        action_by_date["_share_distribution"]
+    ).fillna(0.0)
+    result["rights_issue_ratio"] = dates.map(
+        action_by_date["_rights_issue_ratio"]
+    ).fillna(0.0)
+    result["rights_issue_price"] = dates.map(
+        action_by_date["_rights_issue_price"]
+    ).fillna(0.0)
+    result["observed_reference_price"] = dates.map(
+        action_by_date["_observed_reference_price"]
+    )
+    result["price_formula_supported"] = dates.map(
+        action_by_date["_price_formula_supported"]
+    ).eq(True)
+    result["has_corporate_action"] = dates.map(
+        action_by_date["_has_event"]
+    ).eq(True)
+    result["corporate_action_formula_status"] = dates.map(
+        action_by_date["formula_status"]
+    ).fillna(CorporateActionFormulaStatus.NONE.value)
+    return result
+
+
+def _limit_reference_from_corporate_actions(
+    bars: pd.DataFrame,
+    actions: pd.DataFrame,
+) -> tuple[pd.Series, pd.Series]:
+    """Return the ex-right reference and whether an action changed its basis."""
+    reference = pd.to_numeric(bars["prev_close"], errors="coerce").copy()
+    terms = _corporate_action_terms_for_bars(bars, actions)
+    formula_reference = (
+        reference
+        - terms["cash_dividend_per_share"]
+        + terms["rights_issue_price"] * terms["rights_issue_ratio"]
+    ) / (
+        1.0
+        + terms["share_distribution_ratio"]
+        + terms["rights_issue_ratio"]
+    )
+    observed_reference = pd.to_numeric(
+        terms["observed_reference_price"], errors="coerce"
+    )
+    candidate_reference = observed_reference.where(
+        observed_reference.gt(0.0),
+        formula_reference.where(terms["price_formula_supported"]),
+    )
+    usable = terms["has_corporate_action"] & candidate_reference.gt(0.0)
+    reference.loc[usable] = candidate_reference.loc[usable]
+    return reference, usable.astype(bool)
+
+
+def _read_parquet_through_date(
+    path: Path,
+    *,
+    date_column: str,
+    data_cutoff: str | pd.Timestamp | None,
+    columns: Sequence[str] | None = None,
+) -> pd.DataFrame:
+    """Read dated parquet rows with a predicate-pushed physical cutoff."""
+    kwargs: dict[str, object] = {}
+    if columns is not None:
+        kwargs["columns"] = list(columns)
+    if data_cutoff is not None:
+        cutoff = pd.Timestamp(data_cutoff).normalize().to_pydatetime()
+        kwargs["filters"] = [(date_column, "<=", cutoff)]
+    return pd.read_parquet(path, **kwargs)
+
+
+def _qfq_from_corporate_actions(
+    raw_bars: pd.DataFrame,
+    actions: pd.DataFrame,
+    *,
+    data_cutoff: str | pd.Timestamp | None = None,
+) -> pd.DataFrame:
+    """Rebuild a forward-adjusted OHLC series from raw bars and ex-date actions."""
+    bars = raw_bars.copy()
+    bars["date"] = pd.to_datetime(bars["date"]).dt.normalize()
+    if data_cutoff is not None:
+        cutoff = pd.Timestamp(data_cutoff).normalize()
+        bars = bars.loc[bars["date"].le(cutoff)].copy()
+        if not actions.empty and "ex_date" in actions:
+            actions = actions.copy()
+            actions["ex_date"] = pd.to_datetime(
+                actions["ex_date"], errors="coerce"
+            ).dt.normalize()
+            actions = actions.loc[actions["ex_date"].le(cutoff)].copy()
+    bars = bars.sort_values("date").drop_duplicates("date", keep="last")
+    bars["prev_close"] = pd.to_numeric(bars["close"], errors="coerce").shift(1)
+    reference, action_adjusted = _limit_reference_from_corporate_actions(
+        bars, actions
+    )
+    action_terms = _corporate_action_terms_for_bars(bars, actions)
+    event_ratio = pd.Series(1.0, index=bars.index, dtype=float)
+    usable = (
+        action_adjusted
+        & reference.notna()
+        & bars["prev_close"].notna()
+        & bars["prev_close"].gt(0.0)
+    )
+    event_ratio.loc[usable] = (
+        reference.loc[usable] / bars.loc[usable, "prev_close"]
+    )
+    if (~event_ratio.gt(0.0)).any() or (~np.isfinite(event_ratio)).any():
+        raise ValueError("corporate actions produced an invalid qfq event ratio")
+
+    # An event on day t adjusts every earlier bar, but not day t itself. Later
+    # events only rescale an earlier window uniformly, so pre-event returns and
+    # ratios remain unchanged; a label that crosses t receives the adjustment.
+    inclusive_future_product = event_ratio.iloc[::-1].cumprod().iloc[::-1]
+    bars["adjustment_factor"] = inclusive_future_product / event_ratio
+    bars["event_ratio"] = event_ratio.where(action_adjusted)
+    bars["corporate_action_adjusted"] = action_adjusted.astype(bool)
+    bars["corporate_action_formula_status"] = action_terms[
+        "corporate_action_formula_status"
+    ]
+    bars["rights_issue_ratio"] = action_terms["rights_issue_ratio"]
+    bars["rights_issue_price"] = action_terms["rights_issue_price"]
+    bars["event_reference_price"] = reference.where(action_adjusted)
+    for column in ("open", "high", "low", "close"):
+        bars[column] = (
+            pd.to_numeric(bars[column], errors="coerce")
+            * bars["adjustment_factor"]
+        )
+    bars["adjustment"] = "qfq"
+    bars["source"] = "corporate_actions_adjusted+raw_bars"
+    continuity_error = (
+        bars["close"].shift(1)
+        - bars["event_reference_price"] * bars["adjustment_factor"]
+    ).where(bars["corporate_action_adjusted"])
+    if continuity_error.abs().dropna().gt(1e-8).any():
+        raise ValueError("qfq action factor failed the reference-price identity")
+    return bars.drop(columns=["prev_close"])
+
+
+def build_qfq_from_corporate_actions(
+    config: Dict,
+    limit: Optional[int] = None,
+    codes: Optional[Sequence[str]] = None,
+    force: bool = False,
+    data_cutoff: str | pd.Timestamp | None = None,
+) -> None:
+    """Rebuild qfq files from raw OHLC and the repository corporate-action layer."""
+    del config
+    raw_dir = PARQUET / "daily_bars" / "adjustment=raw"
+    qfq_dir = PARQUET / "daily_bars" / "adjustment=qfq"
+    event_dir = PARQUET / "corporate_action_events"
+    legacy_action_dir = PARQUET / "corporate_actions"
+    action_dir = event_dir if event_dir.exists() else legacy_action_dir
+    raw_files = sorted(raw_dir.glob("*.parquet"))
+    raw_files = [
+        path for path in raw_files if exchange_for(path.stem) in ("SH", "SZ")
+    ]
+    frozen_universe_codes: set[str] | None = None
+    if data_cutoff is not None and not codes:
+        frozen_universe_codes = set(
+            _frozen_sh_sz_universe(data_cutoff)["code"].astype(str)
+        )
+        raw_files = [
+            path for path in raw_files if path.stem in frozen_universe_codes
+        ]
+    if codes:
+        wanted = set(codes)
+        raw_files = [path for path in raw_files if path.stem in wanted]
+    if limit:
+        raw_files = raw_files[:limit]
+    built = 0
+    failures: list[dict[str, str]] = []
+    adjusted_rows_by_year: defaultdict[int, int] = defaultdict(int)
+    event_ratios_by_year: defaultdict[int, list[float]] = defaultdict(list)
+    formula_status_counts: defaultdict[str, int] = defaultdict(int)
+    continuity_max_abs_error = 0.0
+    for index, raw_path in enumerate(raw_files, start=1):
+        code = raw_path.stem
+        output = qfq_dir / raw_path.name
+        if output.exists() and not force:
+            continue
+        try:
+            raw_bars = _read_parquet_through_date(
+                raw_path,
+                date_column="date",
+                data_cutoff=data_cutoff,
+            )
+            action_path = action_dir / f"{code}.parquet"
+            actions = (
+                _read_parquet_through_date(
+                    action_path,
+                    date_column="ex_date",
+                    data_cutoff=data_cutoff,
+                )
+                if action_path.exists()
+                else pd.DataFrame()
+            )
+            if event_dir.exists() and not action_path.exists():
+                raise FileNotFoundError(
+                    f"corporate-action event coverage missing for {code}"
+                )
+            adjusted = _qfq_from_corporate_actions(
+                raw_bars,
+                actions,
+                data_cutoff=data_cutoff,
+            )
+            adjusted_years = pd.to_datetime(
+                adjusted.loc[adjusted["corporate_action_adjusted"], "date"]
+            ).dt.year.value_counts()
+            for action_year, count in adjusted_years.items():
+                adjusted_rows_by_year[int(action_year)] += int(count)
+            event_rows = adjusted.loc[
+                adjusted["corporate_action_adjusted"], ["date", "event_ratio"]
+            ].copy()
+            if not event_rows.empty:
+                event_rows["year"] = pd.to_datetime(event_rows["date"]).dt.year
+                for action_year, values in event_rows.groupby("year")[
+                    "event_ratio"
+                ]:
+                    event_ratios_by_year[int(action_year)].extend(
+                        pd.to_numeric(values, errors="coerce").dropna().tolist()
+                    )
+            for status, count in adjusted[
+                "corporate_action_formula_status"
+            ].value_counts().items():
+                if str(status) != CorporateActionFormulaStatus.NONE.value:
+                    formula_status_counts[str(status)] += int(count)
+            continuity_error = (
+                adjusted["close"].shift(1)
+                - adjusted["event_reference_price"]
+                * adjusted["adjustment_factor"]
+            ).where(adjusted["corporate_action_adjusted"])
+            if continuity_error.notna().any():
+                continuity_max_abs_error = max(
+                    continuity_max_abs_error,
+                    float(continuity_error.abs().max()),
+                )
+            atomic_parquet(adjusted, output)
+            built += 1
+            if index % 500 == 0:
+                logging.info(
+                    "corporate-action qfq progress: %s/%s built=%s",
+                    index,
+                    len(raw_files),
+                    built,
+                )
+        except Exception as exc:  # noqa: BLE001
+            failures.append({"code": code, "error": str(exc)})
+    atomic_json(
+        {
+            "built": built,
+            "failures": failures,
+            "adjusted_rows_by_year": dict(sorted(adjusted_rows_by_year.items())),
+            "event_ratio_by_year": {
+                str(year): {
+                    "count": len(values),
+                    "min": min(values),
+                    "median": float(np.median(values)),
+                    "max": max(values),
+                }
+                for year, values in sorted(event_ratios_by_year.items())
+                if values
+            },
+            "formula_status_counts": dict(sorted(formula_status_counts.items())),
+            "action_source_layer": action_dir.name,
+            "continuity_max_abs_error": continuity_max_abs_error,
+            "physical_read_cutoff": (
+                str(pd.Timestamp(data_cutoff).date())
+                if data_cutoff is not None
+                else None
+            ),
+            "frozen_universe_files": len(raw_files),
+            "universe_rule": (
+                CORPORATE_ACTION_ASOF_UNIVERSE_RULE
+                if frozen_universe_codes is not None
+                else "explicit_codes_or_current"
+            ),
+            "updated_at": dt.datetime.now(),
+        },
+        STATE / "corporate_action_qfq_coverage.json",
+    )
+    logging.info(
+        "corporate-action qfq finished: built=%s failures=%s",
+        built,
+        len(failures),
+    )
+
+
 def build_limit_prices(
     config: Dict,
     limit: Optional[int] = None,
     codes: Optional[Sequence[str]] = None,
     force: bool = False,
+    data_cutoff: str | pd.Timestamp | None = None,
 ) -> None:
     """Derive daily limit-up/down prices from raw close and board/ST rules."""
     del config
     bar_dir = PARQUET / "daily_bars" / "adjustment=raw"
     indicator_dir = PARQUET / "daily_indicators"
+    event_dir = PARQUET / "corporate_action_events"
+    legacy_action_dir = PARQUET / "corporate_actions"
+    action_dir = event_dir if event_dir.exists() else legacy_action_dir
     output_dir = PARQUET / "limit_prices"
     output_dir.mkdir(parents=True, exist_ok=True)
     master_path = PARQUET / "security_master" / "security_master.parquet"
@@ -1811,13 +2970,28 @@ def build_limit_prices(
     calendar_path = PARQUET / "reference" / "trade_calendar.parquet"
     market_dates = pd.DatetimeIndex([])
     if calendar_path.exists():
-        calendar = pd.read_parquet(calendar_path)
+        calendar = _read_parquet_through_date(
+            calendar_path,
+            date_column="calendar_date",
+            data_cutoff=data_cutoff,
+        )
         market_dates = pd.DatetimeIndex(
             pd.to_datetime(
                 calendar.loc[calendar["is_trading_day"].astype(bool), "calendar_date"]
             ).dt.normalize()
         ).sort_values()
     bar_files = sorted(bar_dir.glob("*.parquet"))
+    bar_files = [
+        path for path in bar_files if exchange_for(path.stem) in ("SH", "SZ")
+    ]
+    frozen_universe_codes: set[str] | None = None
+    if data_cutoff is not None and not codes:
+        frozen_universe_codes = set(
+            _frozen_sh_sz_universe(data_cutoff)["code"].astype(str)
+        )
+        bar_files = [
+            path for path in bar_files if path.stem in frozen_universe_codes
+        ]
     if codes:
         wanted = set(codes)
         bar_files = [path for path in bar_files if path.stem in wanted]
@@ -1832,15 +3006,58 @@ def build_limit_prices(
         if output.exists() and not force:
             continue
         try:
-            bars = pd.read_parquet(path, columns=["date", "close"]).copy()
+            bars = _read_parquet_through_date(
+                path,
+                date_column="date",
+                data_cutoff=data_cutoff,
+                columns=["date", "high", "low", "close"],
+            ).copy()
             bars["date"] = pd.to_datetime(bars["date"]).dt.normalize()
             bars = bars.sort_values("date").drop_duplicates("date", keep="last")
             bars["prev_close"] = bars["close"].shift(1)
+            action_path = action_dir / f"{code}.parquet"
+            actions = (
+                _read_parquet_through_date(
+                    action_path,
+                    date_column="ex_date",
+                    data_cutoff=data_cutoff,
+                )
+                if action_path.exists()
+                else pd.DataFrame()
+            )
+            if event_dir.exists() and not action_path.exists():
+                raise FileNotFoundError(
+                    f"corporate-action event coverage missing for {code}"
+                )
+            bars["reference_price"], action_adjusted = (
+                _limit_reference_from_corporate_actions(bars, actions)
+            )
+            action_terms = _corporate_action_terms_for_bars(bars, actions)
+            has_corporate_action = action_terms["has_corporate_action"]
+            bars["cash_dividend_per_share"] = action_terms[
+                "cash_dividend_per_share"
+            ].where(has_corporate_action, 0.0)
+            bars["share_distribution_ratio"] = action_terms[
+                "share_distribution_ratio"
+            ].where(has_corporate_action, 0.0)
+            bars["rights_issue_ratio"] = action_terms[
+                "rights_issue_ratio"
+            ].where(has_corporate_action, 0.0)
+            bars["rights_issue_price"] = action_terms[
+                "rights_issue_price"
+            ].where(has_corporate_action, 0.0)
+            bars["corporate_action_adjusted"] = action_adjusted
+            bars["corporate_action_formula_status"] = action_terms[
+                "corporate_action_formula_status"
+            ]
             is_st = pd.Series(False, index=bars.index)
             indicator_path = indicator_dir / f"{code}.parquet"
             if indicator_path.exists():
-                indicators = pd.read_parquet(
-                    indicator_path, columns=["date", "isST"]
+                indicators = _read_parquet_through_date(
+                    indicator_path,
+                    date_column="date",
+                    data_cutoff=data_cutoff,
+                    columns=["date", "isST"],
                 ).copy()
                 indicators["date"] = pd.to_datetime(indicators["date"]).dt.normalize()
                 bars = bars.merge(indicators, on="date", how="left")
@@ -1870,36 +3087,76 @@ def build_limit_prices(
             bars["limit_pct"] = pd.to_numeric(
                 pd.Series(limit_pct, index=bars.index), errors="coerce"
             )
-            bars["limit_up"] = (
-                bars["prev_close"] * (1.0 + bars["limit_pct"]) + 1e-8
-            ).round(2)
-            bars["limit_down"] = (
-                bars["prev_close"] * (1.0 - bars["limit_pct"]) + 1e-8
-            ).round(2)
+            # Exchange limits are based on the cent-rounded ex-right reference
+            # price.  Applying the percentage to the unrounded theoretical
+            # value creates false one-cent boundary violations on ex dates.
+            limit_basis = _round_positive_price_to_cent(bars["reference_price"])
+            bars["limit_up"] = _round_positive_price_to_cent(
+                limit_basis * (1.0 + bars["limit_pct"])
+            )
+            bars["limit_down"] = _round_positive_price_to_cent(
+                limit_basis * (1.0 - bars["limit_pct"])
+            )
             # First day/missing previous close and registration IPO sessions 1-5
             # have no standard daily limit.
-            mask = bars["prev_close"].isna() | bars["limit_pct"].isna()
-            bars.loc[mask, ["limit_up", "limit_down", "limit_pct"]] = pd.NA
-            # Hit flags use 1-cent tolerance for exchange rounding differences.
-            bars["is_limit_up"] = (
-                bars["close"].notna()
-                & bars["limit_up"].notna()
-                & ((bars["close"] + 1e-8) >= (bars["limit_up"] - 0.01))
+            mask = bars["reference_price"].isna() | bars["limit_pct"].isna()
+            unsupported_price_reference = ~bars[
+                "corporate_action_formula_status"
+            ].map(has_supported_price_formula)
+            bars.loc[
+                mask | unsupported_price_reference,
+                ["limit_up", "limit_down", "limit_pct"],
+            ] = pd.NA
+            within_upper = (
+                pd.to_numeric(bars["high"], errors="coerce") + 1e-8
+            ).round(2).le(bars["limit_up"])
+            within_lower = (
+                pd.to_numeric(bars["low"], errors="coerce") - 1e-8
+            ).round(2).ge(bars["limit_down"])
+            invalid_boundary = ~mask & ~unsupported_price_reference & ~(
+                within_upper & within_lower
             )
-            bars["is_limit_down"] = (
-                bars["close"].notna()
-                & bars["limit_down"].notna()
-                & ((bars["close"] - 1e-8) <= (bars["limit_down"] + 0.01))
+            bars["limit_validation_status"] = np.select(
+                [unsupported_price_reference, mask, invalid_boundary],
+                [
+                    "unsupported_corporate_action",
+                    "not_applicable",
+                    "raw_ohlc_outside_limit",
+                ],
+                default="valid",
             )
-            bars.loc[mask, ["is_limit_up", "is_limit_down"]] = False
+            bars.loc[
+                invalid_boundary,
+                ["limit_up", "limit_down", "limit_pct"],
+            ] = pd.NA
+            close_at_cent = _round_positive_price_to_cent(bars["close"])
+            bars["is_limit_up"] = close_at_cent.eq(bars["limit_up"])
+            bars["is_limit_down"] = close_at_cent.eq(bars["limit_down"])
+            bars.loc[
+                mask | unsupported_price_reference | invalid_boundary,
+                ["is_limit_up", "is_limit_down"],
+            ] = False
             bars["code"] = code
-            bars["source"] = "rule_derived+raw_bars"
+            bars["reference_price_source"] = np.select(
+                [unsupported_price_reference, action_adjusted],
+                [
+                    "unsupported_corporate_action",
+                    "corporate_actions_ex_right",
+                ],
+                default="previous_raw_close",
+            )
+            bars["source"] = f"rule_derived+raw_bars+{action_dir.name}"
             atomic_parquet(
                 bars[
                     [
-                        "code", "date", "prev_close", "close", "limit_up",
-                        "limit_down", "limit_pct", "is_limit_up", "is_limit_down",
-                        "source",
+                        "code", "date", "prev_close", "reference_price",
+                        "reference_price_source", "limit_validation_status",
+                        "cash_dividend_per_share", "share_distribution_ratio",
+                        "rights_issue_ratio", "rights_issue_price",
+                        "corporate_action_adjusted",
+                        "corporate_action_formula_status",
+                        "close", "limit_up", "limit_down", "limit_pct",
+                        "is_limit_up", "is_limit_down", "source",
                     ]
                 ],
                 output,
@@ -1916,6 +3173,17 @@ def build_limit_prices(
         {
             "built": built,
             "failures": failures,
+            "physical_read_cutoff": (
+                str(pd.Timestamp(data_cutoff).date())
+                if data_cutoff is not None
+                else None
+            ),
+            "frozen_universe_files": len(bar_files),
+            "universe_rule": (
+                CORPORATE_ACTION_ASOF_UNIVERSE_RULE
+                if frozen_universe_codes is not None
+                else "explicit_codes_or_current"
+            ),
             "updated_at": dt.datetime.now(),
         },
         STATE / "limit_prices_coverage.json",
@@ -2873,7 +4141,9 @@ def parse_args() -> argparse.Namespace:
         choices=["universe", "listing-dates", "bars", "repair-qfq", "snapshot",
                  "financials", "repair-financials",
                  "announcements", "announcements-q1", "financial-availability",
-                 "corporate-actions", "equity-structure", "shares-daily",
+                 "corporate-actions", "corporate-action-events",
+                 "qfq-corporate-actions",
+                 "equity-structure", "shares-daily",
                  "limit-prices", "indicators", "bj-indicators", "bj-valuation",
                  "import-simtradedata-indicators",
                  "warehouse", "catalog", "update-daily",
@@ -2885,6 +4155,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--limit", type=int, help="Limit securities for a pilot run")
     parser.add_argument("--codes", nargs="*", help="Only process specific six-digit codes")
     parser.add_argument("--force", action="store_true", help="Overwrite completed symbol files / redo update-daily even if already current")
+    parser.add_argument(
+        "--data-cutoff",
+        help="Physically exclude dated parquet rows after YYYY-MM-DD",
+    )
     parser.add_argument(
         "--source-root",
         type=Path,
@@ -2936,12 +4210,27 @@ def main() -> None:
         build_financial_availability(config)
     if args.command in ("corporate-actions", "all"):
         build_corporate_actions(config, args.limit, args.codes, args.force)
+    if args.command in ("corporate-action-events", "all"):
+        build_corporate_action_events(
+            config,
+            args.limit,
+            args.codes,
+            args.force,
+            args.data_cutoff,
+            args.workers,
+        )
+    if args.command in ("qfq-corporate-actions", "all"):
+        build_qfq_from_corporate_actions(
+            config, args.limit, args.codes, args.force, args.data_cutoff
+        )
     if args.command in ("equity-structure", "all"):
         build_equity_structure(config, args.limit, args.codes, args.force)
     if args.command in ("shares-daily", "all"):
         build_shares_daily(config, args.limit, args.codes, args.force)
     if args.command in ("limit-prices", "all"):
-        build_limit_prices(config, args.limit, args.codes, args.force)
+        build_limit_prices(
+            config, args.limit, args.codes, args.force, args.data_cutoff
+        )
     if args.command in ("indicators", "all"):
         build_daily_indicators(config, args.limit, args.codes, args.force)
     if args.command == "import-simtradedata-indicators":

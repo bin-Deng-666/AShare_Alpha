@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 
+import duckdb
 import pandas as pd
 import pytest
 
@@ -9,6 +10,164 @@ from strategy.rotating import pipeline
 from strategy.rotating.experiments import (
     build_industry_size_diagnostics as industry_diagnostics,
 )
+from strategy.rotating.experiments import (
+    build_price_limit_diagnostics as price_limit_diagnostics,
+)
+
+
+def test_price_limit_diagnostics_compute_daily_spearman_with_ties(tmp_path) -> None:
+    path = tmp_path / "panel.parquet"
+    pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2023-01-03"] * 4),
+            "eligible": True,
+            "left": [0.0, 0.0, 0.2, 0.4],
+            "right": [1.0, 1.0, 2.0, 3.0],
+        }
+    ).to_parquet(path, index=False)
+    connection = duckdb.connect()
+
+    result = price_limit_diagnostics._mean_daily_spearman(
+        connection,
+        panel_glob=path.as_posix(),
+        start="2023-01-01",
+        end="2023-01-31",
+        left=("left",),
+        right=("right",),
+    )
+
+    connection.close()
+    assert result["left"]["right"] == pytest.approx(1.0)
+
+
+def test_price_limit_event_diagnostics_do_not_force_cross_direction_exclusivity(
+    tmp_path,
+) -> None:
+    path = tmp_path / "panel.parquet"
+    audit_path = tmp_path / "order_audit.csv"
+    dates = pd.to_datetime(["2023-01-03", "2023-01-04"])
+    pd.DataFrame(
+        {
+            "code": "000001",
+            "date": dates,
+            "eligible": True,
+            "raw_open": [10.0, 10.0],
+            "raw_high": [11.0, 10.5],
+            "raw_low": [9.0, 9.5],
+            "limit_up": 11.0,
+            "limit_down": 9.0,
+            "is_limit_up": [True, False],
+            "is_limit_down": [True, False],
+            "trade_status": True,
+            "target_5": [0.05, 0.0],
+        }
+    ).to_parquet(path, index=False)
+    pd.DataFrame(
+        {
+            "order_id": [1],
+            "signal_date": [dates[0]],
+            "attempt_date": [dates[1]],
+            "code": ["000001"],
+            "side": ["BUY"],
+            "outcome": ["deferred"],
+            "reason": ["one_price_limit"],
+            "requested_amount": [1_000.0],
+            "filled_amount": [0.0],
+        }
+    ).to_csv(audit_path, index=False)
+    connection = duckdb.connect()
+
+    result = price_limit_diagnostics._event_distribution_and_execution(
+        connection,
+        panel_glob=path.as_posix(),
+        start="2023-01-03",
+        end="2023-01-04",
+        order_audit_path=audit_path,
+    )
+
+    connection.close()
+    assert {row["event"] for row in result["rows"]} == {
+        "up_close",
+        "down_close",
+    }
+    assert len(result["actual_order_execution_rows"]) == 2
+    assert all(
+        row["actual_fill_rate"] == 0.0
+        and row["backlog_requested_amount"] == 1_000.0
+        and row["unexecuted_endpoint_pnl_contribution"] == 50.0
+        for row in result["actual_order_execution_rows"]
+    )
+
+
+def test_price_limit_data_validation_requires_exact_cent_touch(
+    tmp_path,
+) -> None:
+    path = tmp_path / "panel.parquet"
+    pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2023-01-03"]),
+            "eligible": True,
+            "raw_high": 12.87,
+            "raw_low": 11.38,
+            "limit_up": 13.89,
+            "limit_down": 11.37,
+            "is_limit_up": False,
+            "is_limit_down": True,
+            "limit_validation_status": "valid",
+            "limit_reference_source": "corporate_actions_ex_right",
+            "corporate_action_formula_status": "rights_issue_price_formula_only",
+            "target_5": 0.01,
+            "label_available_date": pd.to_datetime(["2023-01-11"]),
+            "label_path_has_unsupported_action": False,
+        }
+    ).to_parquet(path, index=False)
+    connection = duckdb.connect()
+
+    result = price_limit_diagnostics._data_validation(
+        connection,
+        baseline_glob=path.as_posix(),
+        legacy_glob=None,
+        start="2023-01-01",
+        end="2023-01-31",
+    )
+
+    connection.close()
+    assert result["close_without_touch"] == 1
+    assert result["rights_issue_price_formula_rows"] == 1
+    assert result["rights_issue_price_formula_failures"] == 0
+
+
+def test_price_limit_action_gates_reject_incomplete_holder_entitlements() -> None:
+    complete = {
+        variant: {
+            scenario: {
+                "corporate_action_events": 3,
+                "corporate_action_unresolved_holder_entitlement_events": 0,
+                "corporate_action_reference_mismatch_events": 1,
+                "corporate_action_reference_mismatch_entitlements_credited": 1,
+            }
+            for scenario in ("gbrt_historical", "gbrt_flat_20bp_roundtrip")
+        }
+        for variant in ("baseline", "candidate")
+    }
+
+    passed = price_limit_diagnostics._portfolio_action_data_gates(complete)
+    assert passed == {
+        "portfolio_holder_entitlements_are_complete": True,
+        "reference_mismatch_entitlements_are_credited": True,
+    }
+
+    complete["candidate"]["gbrt_historical"][
+        "corporate_action_unresolved_holder_entitlement_events"
+    ] = 1
+    complete["baseline"]["gbrt_flat_20bp_roundtrip"][
+        "corporate_action_reference_mismatch_entitlements_credited"
+    ] = 0
+    failed = price_limit_diagnostics._portfolio_action_data_gates(complete)
+    assert failed == {
+        "portfolio_holder_entitlements_are_complete": False,
+        "reference_mismatch_entitlements_are_credited": False,
+    }
 
 
 def test_score_panel_dataset_rejects_mixed_specs_in_one_score_root(tmp_path) -> None:
@@ -138,6 +297,86 @@ def test_industry_size_augmentation_only_adds_features_to_frozen_partitions(
 def test_industry_size_augmentation_rejects_in_place_mutation(tmp_path) -> None:
     with pytest.raises(ValueError, match="separate output root"):
         pipeline.augment_panel_dataset_with_industry_size_features(
+            "2023-01-01",
+            "2023-12-31",
+            input_root=tmp_path / "panel",
+            output_root=tmp_path / "panel",
+        )
+
+
+def test_price_limit_augmentation_uses_prior_year_without_reading_after_end(
+    tmp_path, monkeypatch
+) -> None:
+    prior_dates = pd.to_datetime(
+        ["2022-12-27", "2022-12-28", "2022-12-29", "2022-12-30"]
+    )
+    current_date = pd.Timestamp("2023-01-03")
+
+    def rows(dates: pd.DatetimeIndex, *, first_up: bool) -> pd.DataFrame:
+        return pd.DataFrame(
+            {
+                "code": "000001",
+                "date": dates,
+                "trade_status": True,
+                "limit_up": 11.0,
+                "limit_down": 9.0,
+                "raw_high": [11.0] + [10.5] * (len(dates) - 1) if first_up else 10.5,
+                "raw_low": 9.5,
+                "raw_close": [11.0] + [10.0] * (len(dates) - 1) if first_up else 10.0,
+                "is_limit_up": [True] + [False] * (len(dates) - 1) if first_up else False,
+                "is_limit_down": False,
+                "limit_validation_status": "valid",
+                "target_rank": 0.0,
+            }
+        )
+
+    input_root = tmp_path / "frozen"
+    prior_path = input_root / "year=2022" / "panel.parquet"
+    current_path = input_root / "year=2023" / "panel.parquet"
+    prior_path.parent.mkdir(parents=True)
+    current_path.parent.mkdir(parents=True)
+    rows(prior_dates, first_up=True).to_parquet(prior_path, index=False)
+    current = rows(pd.DatetimeIndex([current_date]), first_up=False)
+    poisoned = current.assign(code="poisoned", date=pd.Timestamp("2023-01-04"))
+    pd.concat([current, poisoned], ignore_index=True).to_parquet(
+        current_path, index=False
+    )
+
+    real_read_parquet = pd.read_parquet
+    observed_filters = []
+
+    def guarded_read_parquet(path, *args, **kwargs):
+        filters = kwargs.get("filters")
+        assert filters is not None
+        observed_filters.append(filters)
+        loaded = real_read_parquet(path, *args, **kwargs)
+        assert "poisoned" not in loaded["code"].tolist()
+        return loaded
+
+    monkeypatch.setattr(pipeline.pd, "read_parquet", guarded_read_parquet)
+    outputs = pipeline.augment_panel_dataset_with_price_limit_features(
+        str(current_date.date()),
+        str(current_date.date()),
+        input_root=input_root,
+        output_root=tmp_path / "candidate",
+    )
+
+    candidate = real_read_parquet(outputs[0])
+    pd.testing.assert_frame_equal(
+        candidate[list(current.columns)], current, check_dtype=False
+    )
+    assert candidate.loc[0, "limit_up_close_share_5"] == pytest.approx(0.2)
+    assert candidate.loc[0, "limit_history_missing_5"] == 0
+    assert all(
+        max(value for column, operator, value in filters if column == "date")
+        <= current_date
+        for filters in observed_filters
+    )
+
+
+def test_price_limit_augmentation_rejects_in_place_mutation(tmp_path) -> None:
+    with pytest.raises(ValueError, match="separate output root"):
+        pipeline.augment_panel_dataset_with_price_limit_features(
             "2023-01-01",
             "2023-12-31",
             input_root=tmp_path / "panel",

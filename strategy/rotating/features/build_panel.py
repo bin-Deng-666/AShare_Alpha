@@ -7,6 +7,12 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from data.scripts.corporate_action_status import (
+    CorporateActionFormulaStatus,
+    capabilities_for,
+)
+from data.scripts.price_rules import round_cny_price_to_cent as _cent_price
+
 
 REQUIRED_COLUMNS = {
     "code",
@@ -78,6 +84,17 @@ INDUSTRY_SIZE_MODEL_FEATURES = (
 )
 INDUSTRY_SIZE_MODEL_INPUT_FEATURES = MODEL_INPUT_FEATURES + tuple(
     f"rank_{feature}" for feature in INDUSTRY_SIZE_MODEL_FEATURES
+)
+PRICE_LIMIT_MODEL_FEATURES = (
+    "limit_up_close_share_5",
+    "limit_up_unsealed_share_5",
+    "limit_down_close_share_5",
+    "limit_down_unsealed_share_5",
+)
+PRICE_LIMIT_MODEL_INPUT_FEATURES = (
+    MODEL_INPUT_FEATURES
+    + PRICE_LIMIT_MODEL_FEATURES
+    + ("limit_history_missing_5",)
 )
 ENDPOINT_RETURN_COLUMN = "target_5"
 PATH_RETURN_COLUMN = "target_path_5"
@@ -203,6 +220,145 @@ def add_industry_size_residual_features(
     return frame
 
 
+def add_price_limit_state_features(
+    source: pd.DataFrame,
+    *,
+    market_dates: pd.DatetimeIndex | None = None,
+    copy: bool = True,
+) -> pd.DataFrame:
+    """Add the preregistered five-market-session price-limit state bundle."""
+    required = {
+        "code",
+        "date",
+        "trade_status",
+        "limit_up",
+        "limit_down",
+        "is_limit_up",
+        "is_limit_down",
+        "raw_high",
+        "raw_low",
+        "raw_close",
+        "limit_validation_status",
+    }
+    missing = required.difference(source.columns)
+    if missing:
+        raise ValueError(
+            "price-limit feature source missing columns: "
+            + ", ".join(sorted(missing))
+        )
+
+    frame = source.copy() if copy else source
+    normalized_dates = pd.to_datetime(frame["date"]).dt.normalize()
+    normalized_codes = frame["code"].astype(str).str.zfill(6)
+    duplicate = pd.DataFrame(
+        {"code": normalized_codes, "date": normalized_dates}
+    ).duplicated(["code", "date"], keep=False)
+    if duplicate.any():
+        raise ValueError("price-limit feature source contains duplicate code/date rows")
+
+    if market_dates is None:
+        calendar = pd.DatetimeIndex(normalized_dates.dropna().unique()).sort_values()
+    else:
+        calendar = pd.DatetimeIndex(pd.to_datetime(market_dates)).normalize().unique()
+        calendar = calendar.sort_values()
+    if calendar.empty:
+        raise ValueError("price-limit feature market calendar is empty")
+    session_lookup = pd.Series(np.arange(len(calendar), dtype=int), index=calendar)
+    sessions = normalized_dates.map(session_lookup)
+    if sessions.isna().any():
+        raise ValueError("price-limit feature rows fall outside the market calendar")
+
+    trade_raw = frame["trade_status"]
+    trade_known = trade_raw.notna()
+    traded = trade_raw.fillna(False).astype(bool)
+    limit_up = pd.to_numeric(frame["limit_up"], errors="coerce")
+    limit_down = pd.to_numeric(frame["limit_down"], errors="coerce")
+    raw_high = pd.to_numeric(frame["raw_high"], errors="coerce")
+    raw_low = pd.to_numeric(frame["raw_low"], errors="coerce")
+    raw_close = pd.to_numeric(frame["raw_close"], errors="coerce")
+    validation_status = frame["limit_validation_status"].astype("string")
+    close_up_known = frame["is_limit_up"].notna()
+    close_down_known = frame["is_limit_down"].notna()
+    close_up = frame["is_limit_up"].fillna(False).astype(bool) & traded
+    close_down = frame["is_limit_down"].fillna(False).astype(bool) & traded
+    necessary_fields = (
+        limit_up.notna()
+        & limit_down.notna()
+        & raw_high.notna()
+        & raw_low.notna()
+        & raw_close.notna()
+        & close_up_known
+        & close_down_known
+        & validation_status.eq("valid").fillna(False)
+    )
+    observation_valid = trade_known & (~traded | necessary_fields)
+    raw_high_cent = _cent_price(raw_high)
+    raw_low_cent = _cent_price(raw_low)
+    raw_close_cent = _cent_price(raw_close)
+    limit_up_cent = _cent_price(limit_up)
+    limit_down_cent = _cent_price(limit_down)
+    touch_up = traded & limit_up.notna() & raw_high_cent.eq(limit_up_cent)
+    touch_down = traded & limit_down.notna() & raw_low_cent.eq(limit_down_cent)
+    boundary_inconsistent = observation_valid & (
+        raw_high_cent.gt(limit_up_cent) | raw_low_cent.lt(limit_down_cent)
+    )
+    derived_close_up = traded & limit_up.notna() & raw_close_cent.eq(limit_up_cent)
+    derived_close_down = (
+        traded & limit_down.notna() & raw_close_cent.eq(limit_down_cent)
+    )
+    flag_inconsistent = observation_valid & (
+        close_up.ne(derived_close_up) | close_down.ne(derived_close_down)
+    )
+    invalid_close_up = observation_valid & close_up & ~touch_up
+    invalid_close_down = observation_valid & close_down & ~touch_down
+    if (
+        boundary_inconsistent.any()
+        or flag_inconsistent.any()
+        or invalid_close_up.any()
+        or invalid_close_down.any()
+    ):
+        raise ValueError(
+            "price-limit validation is inconsistent with raw OHLC and limit price"
+        )
+
+    working = pd.DataFrame(
+        {
+            "_position": np.arange(len(frame), dtype=int),
+            "code": normalized_codes.to_numpy(),
+            "date": normalized_dates.to_numpy(),
+            "session": sessions.to_numpy(dtype=int),
+            "valid": observation_valid.to_numpy(dtype=np.int8),
+            "limit_up_close_share_5": close_up.to_numpy(dtype=np.int8),
+            "limit_up_unsealed_share_5": (touch_up & ~close_up).to_numpy(
+                dtype=np.int8
+            ),
+            "limit_down_close_share_5": close_down.to_numpy(dtype=np.int8),
+            "limit_down_unsealed_share_5": (touch_down & ~close_down).to_numpy(
+                dtype=np.int8
+            ),
+        }
+    ).sort_values(["code", "date", "_position"])
+    by_code = working.groupby("code", sort=False)
+    five_rows_are_consecutive = (
+        working["session"] - by_code["session"].shift(4)
+    ).eq(4)
+    five_rows_are_valid = by_code["valid"].transform(
+        lambda values: values.rolling(5, min_periods=5).sum()
+    ).eq(5)
+    complete = five_rows_are_consecutive & five_rows_are_valid
+    for feature in PRICE_LIMIT_MODEL_FEATURES:
+        rolling_sum = by_code[feature].transform(
+            lambda values: values.rolling(5, min_periods=5).sum()
+        )
+        working[feature] = (rolling_sum / 5.0).where(complete)
+    working["limit_history_missing_5"] = (~complete).astype("int8")
+
+    restored = working.sort_values("_position")
+    for feature in (*PRICE_LIMIT_MODEL_FEATURES, "limit_history_missing_5"):
+        frame[feature] = restored[feature].to_numpy()
+    return frame
+
+
 def build_factor_panel(
     start: str,
     end: str | None = None,
@@ -214,6 +370,7 @@ def build_factor_panel(
     min_median_amount: float = 50_000_000.0,
     min_float_market_cap: float = 2_000_000_000.0,
     include_industry_size_features: bool = False,
+    include_price_limit_features: bool = False,
 ) -> pd.DataFrame:
     """Return signal rows after computing rolling fields on the full history."""
     if isinstance(source, pd.DataFrame):
@@ -450,6 +607,12 @@ def build_factor_panel(
     )
     if include_industry_size_features:
         frame = add_industry_size_residual_features(frame, copy=False)
+    if include_price_limit_features:
+        frame = add_price_limit_state_features(
+            frame,
+            market_dates=market_dates,
+            copy=False,
+        )
     for feature in MODEL_FEATURES:
         _add_daily_cross_section_rank(frame, feature)
     entry_date_map = {
@@ -480,38 +643,51 @@ def build_factor_panel(
         else pd.Series(np.nan, index=frame.index),
         errors="coerce",
     )
-    one_price = pd.Series(
-        np.isclose(raw_high, raw_low, equal_nan=False)
-        & np.isclose(raw_open, raw_high, equal_nan=False),
-        index=frame.index,
-    )
+    raw_open_cent = _cent_price(raw_open)
+    raw_high_cent = _cent_price(raw_high)
+    raw_low_cent = _cent_price(raw_low)
+    limit_up_cent = _cent_price(limit_up)
+    limit_down_cent = _cent_price(limit_down)
+    one_price = raw_high_cent.eq(raw_low_cent) & raw_open_cent.eq(raw_high_cent)
     is_limit_up = frame.get(
         "is_limit_up", pd.Series(False, index=frame.index)
     ).fillna(False).astype(bool)
     is_limit_down = frame.get(
         "is_limit_down", pd.Series(False, index=frame.index)
     ).fillna(False).astype(bool)
-    open_is_limit_up = is_limit_up | pd.Series(
-        np.isclose(raw_open, limit_up, equal_nan=False), index=frame.index
-    )
-    open_is_limit_down = is_limit_down | pd.Series(
-        np.isclose(raw_open, limit_down, equal_nan=False), index=frame.index
-    )
+    open_is_limit_up = is_limit_up | raw_open_cent.eq(limit_up_cent)
+    open_is_limit_down = is_limit_down | raw_open_cent.eq(limit_down_cent)
     trade_status = frame["trade_status"].fillna(False).astype(bool)
+    formula_status = frame.get(
+        "corporate_action_formula_status",
+        pd.Series(CorporateActionFormulaStatus.NONE.value, index=frame.index),
+    ).fillna(CorporateActionFormulaStatus.NONE.value).astype(str)
+    supported_execution = formula_status.map(
+        lambda status: capabilities_for(status).execution_supported
+    )
+    supported_label = formula_status.map(
+        lambda status: capabilities_for(status).label_supported
+    )
     frame["_can_buy_open"] = (
         trade_status
+        & supported_execution
         & frame["open"].notna()
         & raw_open.notna()
         & ~(one_price & open_is_limit_up)
     )
     frame["_can_sell_open"] = (
         trade_status
+        & supported_execution
         & frame["open"].notna()
         & raw_open.notna()
         & ~(one_price & open_is_limit_down)
     )
     can_buy_lookup = frame.set_index(["code", "date"])["_can_buy_open"]
     can_sell_lookup = frame.set_index(["code", "date"])["_can_sell_open"]
+    invalidation_lookup = pd.Series(
+        (~supported_label).to_numpy(),
+        index=pd.MultiIndex.from_arrays([frame["code"], frame["date"]]),
+    )
     entry_keys = pd.MultiIndex.from_arrays([frame["code"], frame["_entry_date"]])
     exit_keys = pd.MultiIndex.from_arrays([frame["code"], frame["_exit_date"]])
     frame["entry_open"] = open_lookup.reindex(entry_keys).to_numpy()
@@ -524,6 +700,12 @@ def build_factor_panel(
     )
     path_opens = []
     path_executable = []
+    path_requires_invalidation = [
+        invalidation_lookup.reindex(entry_keys)
+        .astype("boolean")
+        .fillna(False)
+        .to_numpy(dtype=bool)
+    ]
     for offset in range(2, 7):
         path_date_map = {
             market_dates[index]: market_dates[index + offset]
@@ -538,6 +720,12 @@ def build_factor_panel(
             .fillna(False)
             .to_numpy(dtype=bool)
         )
+        path_requires_invalidation.append(
+            invalidation_lookup.reindex(path_keys)
+            .astype("boolean")
+            .fillna(False)
+            .to_numpy(dtype=bool)
+        )
     path_open_frame = pd.DataFrame(np.column_stack(path_opens), index=frame.index)
     path_execution_frame = pd.DataFrame(
         np.column_stack(path_executable), index=frame.index
@@ -547,6 +735,9 @@ def build_factor_panel(
         & path_execution_frame.all(axis=1)
         & entry_executable
     )
+    frame["label_path_has_unsupported_action"] = np.column_stack(
+        path_requires_invalidation
+    ).any(axis=1)
     frame[ENDPOINT_RETURN_COLUMN] = (
         frame["exit_open_5"] / frame["entry_open"] - 1.0
     ).where(complete_path)

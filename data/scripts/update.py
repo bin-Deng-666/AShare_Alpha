@@ -66,7 +66,14 @@ def _merge_by_date(existing: pd.DataFrame, new: pd.DataFrame) -> pd.DataFrame:
         return new.copy()
     if new.empty:
         return existing.copy()
-    frame = pd.concat([existing, new], ignore_index=True)
+    columns = existing.columns.union(new.columns, sort=False)
+    frame = pd.concat(
+        [
+            existing.dropna(axis="columns", how="all"),
+            new.dropna(axis="columns", how="all"),
+        ],
+        ignore_index=True,
+    ).reindex(columns=columns)
     frame["date"] = pd.to_datetime(frame["date"]).dt.normalize()
     return (
         frame.drop_duplicates("date", keep="last")
@@ -115,27 +122,36 @@ def _bars_already_at(
     return True
 
 
+def _indicators_already_at(
+    asof: pd.Timestamp,
+) -> bool:
+    """Return whether every listed SH/SZ symbol has indicators through ``asof``."""
+    universe = _listed_universe()
+    codes = universe.loc[
+        universe["exchange"].isin(["SH", "SZ"]), "code"
+    ].astype(str)
+    if codes.empty:
+        return False
+    for code in codes:
+        last = _last_date(PARQUET / "daily_indicators" / f"{code}.parquet")
+        if last is None or last < asof:
+            return False
+    return True
+
+
 def _stock_daily_asof() -> Optional[pd.Timestamp]:
-    """Max date in warehouse stock_daily (what the strategy catalog reads)."""
+    """Max date in the catalog's stable stock_daily view."""
     try:
         import duckdb
-        from research_layer import WAREHOUSE
+        from research_layer import CATALOG
     except Exception:  # noqa: BLE001
         return None
-    root = WAREHOUSE / "stock_daily"
-    files = list(root.rglob("*.parquet"))
-    if not files:
+    if not CATALOG.exists():
         return None
     try:
-        con = duckdb.connect()
+        con = duckdb.connect(str(CATALOG), read_only=True)
         try:
-            glob = root.as_posix() + "/**/*.parquet"
-            row = con.execute(
-                f"""
-                SELECT max(CAST(date AS DATE))
-                FROM read_parquet('{glob}', hive_partitioning=true, union_by_name=true)
-                """
-            ).fetchone()
+            row = con.execute("SELECT max(CAST(date AS DATE)) FROM stock_daily").fetchone()
         finally:
             con.close()
     except Exception:  # noqa: BLE001
@@ -148,8 +164,8 @@ def _stock_daily_asof() -> Optional[pd.Timestamp]:
 def _sync_research_layer_for_asof(config: Dict, end_date: pd.Timestamp) -> None:
     """Refresh warehouse + catalog when bars are current but stock_daily lags.
 
-    Shares/limits may lag a few days; stock_daily uses ASOF carry-forward so
-    the latest bar date still gets float_mcap / limit fields.
+    Share counts may be carried forward, while dated market caps are derived
+    from current amount/turnover and exchange limits require exact-date rows.
     """
     from research_layer import build_catalog
 
@@ -162,6 +178,110 @@ def _sync_research_layer_for_asof(config: Dict, end_date: pd.Timestamp) -> None:
     update_warehouse_current_year(cfg)
     build_catalog(cfg)
     print(f"Research sync done; stock_daily asof → {_stock_daily_asof()}", flush=True)
+
+
+def _warehouse_limits_cover_year(asof: pd.Timestamp) -> bool:
+    """Return whether every warehouse raw-bar key has an exact limit row."""
+    try:
+        import duckdb
+        from research_layer import WAREHOUSE, assert_warehouse_limit_coverage
+
+        connection = duckdb.connect()
+        try:
+            raw_root = WAREHOUSE / "daily_bars_raw"
+            raw_asof = connection.execute(
+                f"""
+                SELECT max(CAST(date AS DATE))
+                FROM read_parquet(
+                    '{raw_root.as_posix()}/**/*.parquet',
+                    hive_partitioning=true,
+                    union_by_name=true
+                )
+                WHERE year(CAST(date AS DATE)) = {asof.year}
+                """
+            ).fetchone()[0]
+            if raw_asof is None or pd.Timestamp(raw_asof) < asof:
+                raise RuntimeError(
+                    f"warehouse raw bars stop at {raw_asof}, before {asof.date()}"
+                )
+            assert_warehouse_limit_coverage(
+                connection,
+                WAREHOUSE,
+                year=asof.year,
+            )
+        finally:
+            connection.close()
+    except Exception as exc:  # noqa: BLE001
+        logging.info(
+            "Warehouse limit-price coverage is incomplete for year=%s: %s",
+            asof.year,
+            exc,
+        )
+        return False
+    return True
+
+
+def _finish_if_daily_layers_current(
+    config: Dict,
+    end_date: pd.Timestamp,
+    *,
+    after_calendar_refresh: bool,
+) -> Optional[dict]:
+    """Skip remaining work when bars, indicators, and research view are current."""
+    bars_current = _bars_already_at(end_date)
+    indicators_current = _indicators_already_at(end_date)
+    limits_current = (
+        _warehouse_limits_cover_year(end_date)
+        if bars_current and indicators_current
+        else False
+    )
+    if not (bars_current and indicators_current and limits_current):
+        if bars_current and not indicators_current:
+            position = "after calendar refresh" if after_calendar_refresh else ""
+            logging.info(
+                "Bars current %s but daily indicators lag; continue update",
+                position,
+            )
+        elif bars_current and indicators_current and not limits_current:
+            logging.info(
+                "Bars and indicators are current but exact limit-price coverage "
+                "is incomplete; continue update"
+            )
+        return None
+
+    warehouse_date = _stock_daily_asof()
+    synced = warehouse_date is None or warehouse_date < end_date
+    if synced:
+        logging.info(
+            "Daily layers current but stock_daily asof=%s; sync research layer to %s",
+            warehouse_date.date() if warehouse_date is not None else None,
+            end_date.date(),
+        )
+        _sync_research_layer_for_asof(config, end_date)
+        warehouse_date = _stock_daily_asof()
+
+    if after_calendar_refresh:
+        reason = "bars_already_current_after_calendar"
+    elif synced:
+        reason = "bars_current_research_synced"
+    else:
+        reason = "bars_and_stock_daily_current"
+    payload = {
+        "end_date": str(end_date.date()),
+        "skipped": True,
+        "reason": reason,
+        "stock_daily_asof": (
+            str(warehouse_date.date()) if warehouse_date is not None else None
+        ),
+        "updated_at": dt.datetime.now(),
+    }
+    atomic_json(payload, STATE / "daily_update.json")
+    logging.info(
+        "Skip remaining update-daily: bars + indicators + stock_daily ready through %s",
+        end_date.date(),
+    )
+    return payload
+
 
 def _fetch_bars_range(
     config: Dict,
@@ -454,61 +574,22 @@ def update_warehouse_current_year(config: Dict) -> None:
     except ImportError as exc:  # pragma: no cover
         raise RuntimeError("duckdb is required for warehouse update") from exc
 
-    year = pd.Timestamp(config["end_date"] or dt.date.today()).year
+    year = _target_asof(config).year
     con = duckdb.connect()
     try:
-        from research_layer import WAREHOUSE
+        from research_layer import (
+            WAREHOUSE,
+            assert_warehouse_limit_coverage,
+            compact_warehouse_layer,
+            warehouse_layer_specs,
+            warehouse_shares_sql,
+        )
 
-        jobs = [
-            ("daily_bars_qfq", str(PARQUET / "daily_bars" / "adjustment=qfq" / "*.parquet"), True),
-            ("daily_bars_raw", str(PARQUET / "daily_bars" / "adjustment=raw" / "*.parquet"), True),
-            ("daily_indicators", str(PARQUET / "daily_indicators" / "*.parquet"), False),
-            ("shares_daily", str(PARQUET / "shares_daily" / "*.parquet"), False),
-            ("limit_prices", str(PARQUET / "limit_prices" / "*.parquet"), False),
-        ]
-        for name, pattern, has_exchange in jobs:
-            target = WAREHOUSE / name
-            target.mkdir(parents=True, exist_ok=True)
-            # Remove current-year partitions then rewrite.
-            for path in target.glob(f"year={year}"):
-                import shutil
+        for spec in warehouse_layer_specs(PARQUET):
+            logging.info("warehouse refreshing %s year=%s", spec.name, year)
+            compact_warehouse_layer(con, spec, WAREHOUSE, year=year)
 
-                if path.is_dir():
-                    shutil.rmtree(path)
-            if has_exchange:
-                exchange_expr = "CAST(exchange AS VARCHAR)"
-                cols = "code, date, exchange, open, high, low, close, volume, amount, source"
-            else:
-                exchange_expr = """
-                    CASE
-                      WHEN CAST(code AS VARCHAR) LIKE '92%'
-                        OR CAST(code AS VARCHAR) LIKE '8%'
-                        OR CAST(code AS VARCHAR) LIKE '4%' THEN 'BJ'
-                      WHEN CAST(code AS VARCHAR) LIKE '6%' THEN 'SH'
-                      ELSE 'SZ'
-                    END
-                """
-                if name == "daily_indicators":
-                    cols = "code, date, turn, tradestatus, pctChg, peTTM, pbMRQ, psTTM, pcfNcfTTM, isST, source"
-                elif name == "shares_daily":
-                    cols = "code, date, total_shares, float_shares, total_market_cap, float_market_cap, source"
-                else:
-                    cols = "code, date, prev_close, close, limit_up, limit_down, limit_pct, is_limit_up, is_limit_down, source"
-            logging.info("warehouse refreshing %s year=%s", name, year)
-            con.execute(
-                f"""
-                COPY (
-                  SELECT
-                    {cols},
-                    year(CAST(date AS DATE)) AS year,
-                    {exchange_expr} AS exchange_part
-                  FROM read_parquet('{pattern}', union_by_name=true)
-                  WHERE year(CAST(date AS DATE)) = {year}
-                )
-                TO '{target.as_posix()}'
-                (FORMAT PARQUET, PARTITION_BY (year, exchange_part), OVERWRITE_OR_IGNORE)
-                """
-            )
+        assert_warehouse_limit_coverage(con, WAREHOUSE, year=year)
 
         panel = WAREHOUSE / "stock_daily"
         panel.mkdir(parents=True, exist_ok=True)
@@ -518,8 +599,12 @@ def update_warehouse_current_year(config: Dict) -> None:
             if path.is_dir():
                 shutil.rmtree(path)
         logging.info("warehouse refreshing stock_daily year=%s", year)
-        # ASOF joins: shares / limits may lag a few sessions; carry last known
-        # row forward so stock_daily still covers the latest bar date.
+        # Share counts may remain valid across dates, but dated market caps and
+        # exchange limits must never be carried forward.
+        shares_columns, shares_join = warehouse_shares_sql(
+            WAREHOUSE, asof=True
+        )
+
         con.execute(
             f"""
             COPY (
@@ -536,10 +621,7 @@ def update_warehouse_current_year(config: Dict) -> None:
                 i.psTTM AS ps_ttm,
                 i.pcfNcfTTM AS pcf_ncf_ttm,
                 CAST(i.isST AS BOOLEAN) AS is_st,
-                s.total_shares,
-                s.float_shares,
-                s.total_market_cap,
-                s.float_market_cap,
+                {shares_columns}
                 l.limit_up,
                 l.limit_down,
                 l.limit_pct,
@@ -554,18 +636,13 @@ def update_warehouse_current_year(config: Dict) -> None:
               ) b
               LEFT JOIN read_parquet('{(WAREHOUSE / "daily_indicators").as_posix()}/**/*.parquet', hive_partitioning=true, union_by_name=true) i
                 ON b.code = i.code AND CAST(b.date AS DATE) = CAST(i.date AS DATE)
-              ASOF LEFT JOIN (
-                SELECT code, CAST(date AS DATE) AS date,
-                       total_shares, float_shares, total_market_cap, float_market_cap
-                FROM read_parquet('{(WAREHOUSE / "shares_daily").as_posix()}/**/*.parquet', hive_partitioning=true, union_by_name=true)
-              ) s
-                ON b.code = s.code AND CAST(b.date AS DATE) >= s.date
-              ASOF LEFT JOIN (
+              {shares_join}
+              LEFT JOIN (
                 SELECT code, CAST(date AS DATE) AS date,
                        limit_up, limit_down, limit_pct, is_limit_up, is_limit_down
                 FROM read_parquet('{(WAREHOUSE / "limit_prices").as_posix()}/**/*.parquet', hive_partitioning=true, union_by_name=true)
               ) l
-                ON b.code = l.code AND CAST(b.date AS DATE) >= l.date
+                ON b.code = l.code AND CAST(b.date AS DATE) = l.date
             )
             TO '{panel.as_posix()}'
             (FORMAT PARQUET, PARTITION_BY (year, exchange_part), OVERWRITE_OR_IGNORE)
@@ -891,43 +968,14 @@ def run_daily_update(
     end_date = _target_asof(config)
     logging.info("Daily update starting; target asof=%s", end_date.date())
 
-    if not force and codes is None and _bars_already_at(end_date):
-        wh = _stock_daily_asof()
-        if wh is not None and wh >= end_date:
-            payload = {
-                "end_date": str(end_date.date()),
-                "skipped": True,
-                "reason": "bars_and_stock_daily_current",
-                "stock_daily_asof": str(wh.date()),
-                "updated_at": dt.datetime.now(),
-            }
-            atomic_json(payload, STATE / "daily_update.json")
-            logging.info(
-                "Skip update-daily: bars + stock_daily already through %s "
-                "(pass --force to redo)",
-                end_date.date(),
-            )
-            return payload
-        logging.info(
-            "Bars already through %s but stock_daily asof=%s — sync research layer",
-            end_date.date(),
-            wh.date() if wh is not None else None,
+    if not force and codes is None:
+        current_payload = _finish_if_daily_layers_current(
+            config,
+            end_date,
+            after_calendar_refresh=False,
         )
-        _sync_research_layer_for_asof(config, end_date)
-        wh2 = _stock_daily_asof()
-        payload = {
-            "end_date": str(end_date.date()),
-            "skipped": True,
-            "reason": "bars_current_research_synced",
-            "stock_daily_asof": str(wh2.date()) if wh2 is not None else None,
-            "updated_at": dt.datetime.now(),
-        }
-        atomic_json(payload, STATE / "daily_update.json")
-        logging.info(
-            "Skip bar fetch; research layer synced to %s",
-            wh2.date() if wh2 is not None else end_date.date(),
-        )
-        return payload
+        if current_payload is not None:
+            return current_payload
 
     # 1) Universe / calendar
     logging.info("Step 1/10 universe + listing dates + calendar")
@@ -936,28 +984,14 @@ def run_daily_update(
     refresh_trade_calendar(config)
     # Calendar may extend; recompute asof after refresh.
     end_date = _target_asof(config)
-    if not force and codes is None and _bars_already_at(end_date):
-        wh = _stock_daily_asof()
-        if wh is None or wh < end_date:
-            logging.info(
-                "Bars current after calendar refresh; syncing research layer to %s",
-                end_date.date(),
-            )
-            _sync_research_layer_for_asof(config, end_date)
-            wh = _stock_daily_asof()
-        payload = {
-            "end_date": str(end_date.date()),
-            "skipped": True,
-            "reason": "bars_already_current_after_calendar",
-            "stock_daily_asof": str(wh.date()) if wh is not None else None,
-            "updated_at": dt.datetime.now(),
-        }
-        atomic_json(payload, STATE / "daily_update.json")
-        logging.info(
-            "Skip remaining update-daily: ready through %s",
-            end_date.date(),
+    if not force and codes is None:
+        current_payload = _finish_if_daily_layers_current(
+            config,
+            end_date,
+            after_calendar_refresh=True,
         )
-        return payload
+        if current_payload is not None:
+            return current_payload
 
     # 2) Daily market facts
     logging.info("Step 2/10 bars + indicators")

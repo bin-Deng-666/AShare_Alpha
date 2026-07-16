@@ -5,6 +5,8 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import re
+import shutil
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
@@ -432,6 +434,202 @@ def _ensure_duckdb():
         raise RuntimeError("duckdb is required; pip install duckdb")
 
 
+@dataclass(frozen=True)
+class WarehouseLayerSpec:
+    """Physical-to-warehouse policy for one dated research layer."""
+
+    name: str
+    pattern: str
+    columns: Tuple[str, ...]
+    has_exchange: bool
+    required: bool = True
+
+
+def warehouse_layer_specs(parquet_root: Path | None = None) -> Tuple[WarehouseLayerSpec, ...]:
+    """Return the shared full/incremental warehouse layer contract."""
+    root = Path(parquet_root) if parquet_root is not None else PARQUET
+    return (
+        WarehouseLayerSpec(
+            "daily_bars_qfq",
+            str(root / "daily_bars" / "adjustment=qfq" / "*.parquet"),
+            ("code", "date", "exchange", "open", "high", "low", "close", "volume", "amount", "source"),
+            True,
+        ),
+        WarehouseLayerSpec(
+            "daily_bars_raw",
+            str(root / "daily_bars" / "adjustment=raw" / "*.parquet"),
+            ("code", "date", "exchange", "open", "high", "low", "close", "volume", "amount", "source"),
+            True,
+        ),
+        WarehouseLayerSpec(
+            "daily_indicators",
+            str(root / "daily_indicators" / "*.parquet"),
+            ("code", "date", "turn", "tradestatus", "pctChg", "peTTM", "pbMRQ", "psTTM", "pcfNcfTTM", "isST", "source"),
+            False,
+        ),
+        WarehouseLayerSpec(
+            "shares_daily",
+            str(root / "shares_daily" / "*.parquet"),
+            ("code", "date", "total_shares", "float_shares", "total_market_cap", "float_market_cap", "source"),
+            False,
+            required=False,
+        ),
+        WarehouseLayerSpec(
+            "limit_prices",
+            str(root / "limit_prices" / "*.parquet"),
+            ("code", "date", "prev_close", "close", "limit_up", "limit_down", "limit_pct", "is_limit_up", "is_limit_down", "source"),
+            False,
+        ),
+    )
+
+
+def compact_warehouse_layer(
+    connection,
+    spec: WarehouseLayerSpec,
+    warehouse_root: Path,
+    *,
+    year: int | None = None,
+) -> int:
+    """Rewrite one warehouse layer for full history or one calendar year."""
+    target = Path(warehouse_root) / spec.name
+    if year is None:
+        if target.exists():
+            shutil.rmtree(target)
+    else:
+        partition = target / f"year={int(year)}"
+        if partition.exists():
+            shutil.rmtree(partition)
+    target.mkdir(parents=True, exist_ok=True)
+
+    if not list(Path(spec.pattern).parent.glob("*.parquet")):
+        if spec.required:
+            raise FileNotFoundError(
+                f"required physical layer has no parquet files: {spec.pattern}"
+            )
+        return len(list(target.rglob("*.parquet")))
+
+    year_predicate = ""
+    if year is not None:
+        year_predicate = f"WHERE year(CAST(date AS DATE)) = {int(year)}"
+        source_rows = connection.execute(
+            f"""
+            SELECT count(*)
+            FROM read_parquet('{spec.pattern}', union_by_name=true)
+            {year_predicate}
+            """
+        ).fetchone()[0]
+        if not source_rows:
+            if spec.required:
+                raise RuntimeError(
+                    f"required layer {spec.name} has no rows for year={year}"
+                )
+            return len(list(target.rglob("*.parquet")))
+
+    exchange_expr = (
+        "CAST(exchange AS VARCHAR)"
+        if spec.has_exchange
+        else """
+            CASE
+              WHEN CAST(code AS VARCHAR) LIKE '92%'
+                OR CAST(code AS VARCHAR) LIKE '8%'
+                OR CAST(code AS VARCHAR) LIKE '4%' THEN 'BJ'
+              WHEN CAST(code AS VARCHAR) LIKE '6%' THEN 'SH'
+              ELSE 'SZ'
+            END
+        """
+    )
+    connection.execute(
+        f"""
+        COPY (
+          SELECT
+            {", ".join(spec.columns)},
+            year(CAST(date AS DATE)) AS year,
+            {exchange_expr} AS exchange_part
+          FROM read_parquet('{spec.pattern}', union_by_name=true)
+          {year_predicate}
+        )
+        TO '{target.as_posix()}'
+        (FORMAT PARQUET, PARTITION_BY (year, exchange_part), OVERWRITE_OR_IGNORE)
+        """
+    )
+    return len(list(target.rglob("*.parquet")))
+
+
+def warehouse_shares_sql(
+    warehouse_root: Path, *, asof: bool
+) -> Tuple[str, str]:
+    """Return share columns/join with current-date market-cap semantics."""
+    derived_cap = "b.amount * 100.0 / NULLIF(i.turn, 0.0)"
+    shares_root = Path(warehouse_root) / "shares_daily"
+    if not list(shares_root.rglob("*.parquet")):
+        return (
+            f"""
+                NULL::BIGINT AS total_shares,
+                NULL::BIGINT AS float_shares,
+                {derived_cap} AS total_market_cap,
+                {derived_cap} AS float_market_cap,
+            """,
+            "",
+        )
+
+    if asof:
+        total_cap = (
+            "CASE WHEN CAST(b.date AS DATE) = s.date "
+            f"THEN COALESCE(s.total_market_cap, s.float_market_cap, {derived_cap}) "
+            f"ELSE {derived_cap} END"
+        )
+        float_cap = (
+            "CASE WHEN CAST(b.date AS DATE) = s.date "
+            f"THEN COALESCE(s.float_market_cap, {derived_cap}) "
+            f"ELSE {derived_cap} END"
+        )
+        join_kind = "ASOF LEFT JOIN"
+        date_predicate = "CAST(b.date AS DATE) >= s.date"
+    else:
+        total_cap = f"COALESCE(s.total_market_cap, s.float_market_cap, {derived_cap})"
+        float_cap = f"COALESCE(s.float_market_cap, {derived_cap})"
+        join_kind = "LEFT JOIN"
+        date_predicate = "CAST(b.date AS DATE) = s.date"
+
+    columns = f"""
+        s.total_shares,
+        s.float_shares,
+        {total_cap} AS total_market_cap,
+        {float_cap} AS float_market_cap,
+    """
+    join = f"""
+      {join_kind} (
+        SELECT code, CAST(date AS DATE) AS date,
+               total_shares, float_shares, total_market_cap, float_market_cap
+        FROM read_parquet('{shares_root.as_posix()}/**/*.parquet', hive_partitioning=true, union_by_name=true)
+      ) s
+        ON b.code = s.code AND {date_predicate}
+    """
+    return columns, join
+
+
+def assert_warehouse_limit_coverage(
+    connection, warehouse_root: Path, *, year: int | None = None
+) -> None:
+    """Require one dated limit row for every raw bar key in scope."""
+    root = Path(warehouse_root)
+    year_predicate = (
+        f"AND year(CAST(b.date AS DATE)) = {int(year)}" if year is not None else ""
+    )
+    missing = connection.execute(
+        f"""
+        SELECT count(*)
+        FROM read_parquet('{(root / "daily_bars_raw").as_posix()}/**/*.parquet', hive_partitioning=true, union_by_name=true) b
+        LEFT JOIN read_parquet('{(root / "limit_prices").as_posix()}/**/*.parquet', hive_partitioning=true, union_by_name=true) l
+          ON b.code = l.code AND CAST(b.date AS DATE) = CAST(l.date AS DATE)
+        WHERE l.code IS NULL {year_predicate}
+        """
+    ).fetchone()[0]
+    if missing:
+        scope = f"year={year}" if year is not None else "full history"
+        raise RuntimeError(f"limit_prices missing {missing} bar keys for {scope}")
+
+
 def build_warehouse(config: Dict) -> None:
     """Compact hot research tables into year/exchange partitioned Parquet."""
     del config
@@ -439,85 +637,24 @@ def build_warehouse(config: Dict) -> None:
     WAREHOUSE.mkdir(parents=True, exist_ok=True)
     con = duckdb.connect()
     try:
-        jobs = [
-            (
-                "daily_bars_qfq",
-                str(PARQUET / "daily_bars" / "adjustment=qfq" / "*.parquet"),
-                ["code", "date", "exchange", "open", "high", "low", "close", "volume", "amount", "source"],
-                True,
-            ),
-            (
-                "daily_bars_raw",
-                str(PARQUET / "daily_bars" / "adjustment=raw" / "*.parquet"),
-                ["code", "date", "exchange", "open", "high", "low", "close", "volume", "amount", "source"],
-                True,
-            ),
-            (
-                "daily_indicators",
-                str(PARQUET / "daily_indicators" / "*.parquet"),
-                ["code", "date", "turn", "tradestatus", "pctChg", "peTTM", "pbMRQ", "psTTM", "pcfNcfTTM", "isST", "source"],
-                False,
-            ),
-            (
-                "shares_daily",
-                str(PARQUET / "shares_daily" / "*.parquet"),
-                ["code", "date", "total_shares", "float_shares", "total_market_cap", "float_market_cap", "source"],
-                False,
-            ),
-            (
-                "limit_prices",
-                str(PARQUET / "limit_prices" / "*.parquet"),
-                ["code", "date", "prev_close", "close", "limit_up", "limit_down", "limit_pct", "is_limit_up", "is_limit_down", "source"],
-                False,
-            ),
-        ]
         summary = {}
-        for name, pattern, cols, has_exchange in jobs:
-            target = WAREHOUSE / name
-            if target.exists():
-                import shutil
+        for spec in warehouse_layer_specs():
+            logging.info("warehouse compacting %s", spec.name)
+            file_count = compact_warehouse_layer(con, spec, WAREHOUSE)
+            summary[spec.name] = {"files": file_count}
+            logging.info("warehouse %s -> %s files", spec.name, file_count)
 
-                shutil.rmtree(target)
-            target.mkdir(parents=True, exist_ok=True)
-            col_sql = ", ".join(cols)
-            if has_exchange:
-                exchange_expr = "CAST(exchange AS VARCHAR)"
-            else:
-                exchange_expr = """
-                    CASE
-                      WHEN CAST(code AS VARCHAR) LIKE '92%'
-                        OR CAST(code AS VARCHAR) LIKE '8%'
-                        OR CAST(code AS VARCHAR) LIKE '4%' THEN 'BJ'
-                      WHEN CAST(code AS VARCHAR) LIKE '6%' THEN 'SH'
-                      ELSE 'SZ'
-                    END
-                """
-            logging.info("warehouse compacting %s", name)
-            con.execute(
-                f"""
-                COPY (
-                  SELECT
-                    {col_sql},
-                    year(CAST(date AS DATE)) AS year,
-                    {exchange_expr} AS exchange_part
-                  FROM read_parquet('{pattern}', union_by_name=true)
-                )
-                TO '{target.as_posix()}'
-                (FORMAT PARQUET, PARTITION_BY (year, exchange_part), OVERWRITE_OR_IGNORE)
-                """
-            )
-            file_count = len(list(target.rglob("*.parquet")))
-            summary[name] = {"files": file_count}
-            logging.info("warehouse %s -> %s files", name, file_count)
+        assert_warehouse_limit_coverage(con, WAREHOUSE)
 
         # Materialized stock_daily research panel from warehouse parts.
         panel_dir = WAREHOUSE / "stock_daily"
         if panel_dir.exists():
-            import shutil
-
             shutil.rmtree(panel_dir)
         panel_dir.mkdir(parents=True, exist_ok=True)
         logging.info("warehouse building stock_daily panel")
+        shares_columns, shares_join = warehouse_shares_sql(
+            WAREHOUSE, asof=False
+        )
         con.execute(
             f"""
             COPY (
@@ -534,10 +671,7 @@ def build_warehouse(config: Dict) -> None:
                 i.psTTM AS ps_ttm,
                 i.pcfNcfTTM AS pcf_ncf_ttm,
                 CAST(i.isST AS BOOLEAN) AS is_st,
-                s.total_shares,
-                s.float_shares,
-                s.total_market_cap,
-                s.float_market_cap,
+                {shares_columns}
                 l.limit_up,
                 l.limit_down,
                 l.limit_pct,
@@ -548,8 +682,7 @@ def build_warehouse(config: Dict) -> None:
               FROM read_parquet('{(WAREHOUSE / "daily_bars_qfq").as_posix()}/**/*.parquet', hive_partitioning=true, union_by_name=true) b
               LEFT JOIN read_parquet('{(WAREHOUSE / "daily_indicators").as_posix()}/**/*.parquet', hive_partitioning=true, union_by_name=true) i
                 ON b.code = i.code AND CAST(b.date AS DATE) = CAST(i.date AS DATE)
-              LEFT JOIN read_parquet('{(WAREHOUSE / "shares_daily").as_posix()}/**/*.parquet', hive_partitioning=true, union_by_name=true) s
-                ON b.code = s.code AND CAST(b.date AS DATE) = CAST(s.date AS DATE)
+              {shares_join}
               LEFT JOIN read_parquet('{(WAREHOUSE / "limit_prices").as_posix()}/**/*.parquet', hive_partitioning=true, union_by_name=true) l
                 ON b.code = l.code AND CAST(b.date AS DATE) = CAST(l.date AS DATE)
             )

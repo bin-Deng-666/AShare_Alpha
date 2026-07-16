@@ -1,0 +1,2 @@
+version,created_at,data_release,development_period,holdout_period,model,development_ann_return,development_sharpe,development_max_drawdown,holdout_ann_return,holdout_sharpe,holdout_max_drawdown,admission_status
+v0.1,2026-07-16,data-cn-2026-05-26,2021-01-01/2023-12-31,2024-01-01/2026-05-22,gbrt,-0.045446,-0.290,-0.277808,0.120847,0.820,-0.105085,research_only_forward_validation_required

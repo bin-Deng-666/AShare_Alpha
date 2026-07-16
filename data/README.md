@@ -112,7 +112,7 @@ python3 scripts/build_dataset.py catalog
 python3 scripts/build_dataset.py validate
 ```
 
-catalog 暴露的稳定视图：`security_master`、`trade_calendar`、`stock_daily`、
+catalog 暴露的稳定视图：`security_master`、`trade_calendar`、`stock_daily`、`stock_daily_raw`、`index_daily_bars`、`industry_index_master`、
 `financial_statements`、`financial_pit`、`financial_availability`、
 `corporate_actions`、`industry_membership`、`index_membership`。
 
@@ -121,6 +121,8 @@ catalog 暴露的稳定视图：`security_master`、`trade_calendar`、`stock_da
 以下定义是 `catalog/quant.duckdb` 必须暴露的稳定接口。Parquet是物理存储，
 DuckDB视图负责统一字段名和类型。策略代码只依赖本节的逻辑表，不依赖单个
 Parquet文件推断出的类型。
+
+`stock_daily` 使用前复权价格供研究特征使用；`stock_daily_raw` 使用未复权价格供实际成交模拟；`index_daily_bars` 提供统一代码格式的指数日线。三者均由 catalog 统一类型，策略不得绕过 catalog 读取对应物理文件。
 
 统一约定：
 
@@ -200,6 +202,20 @@ source           VARCHAR NOT NULL
 ```
 
 每日指标与日线按 `code + date` 左连接，不重复写入两套复权行情。
+
+若 BaoStock 直接登录不可用，可使用公开的 SimTradeData CN release 中的
+`valuation/` 与 `metadata/stock_status.parquet`，再转换为同一字段口径：
+
+```powershell
+.venv\Scripts\python.exe data\scripts\build_dataset.py `
+  import-simtradedata-indicators `
+  --source-root data\raw\simtradelab\cn `
+  --force
+```
+
+导入器从 release manifest 保留版本号，将 `turnover_rate/pe_ttm/pb` 映射为
+`turn/peTTM/pbMRQ`，并按日期展开 `ST/HALT` 状态。正式研究应固定同一个
+release 截止日，不应把较新的单只股票文件拼进旧横截面。
 
 ### `financial_statements`
 
@@ -474,8 +490,8 @@ source              VARCHAR NOT NULL
 
 来源：`parquet/limit_prices/{code}.parquet`
 
-由未复权昨收与板块/ST规则派生：主板10%、创业板注册制后与科创板20%、北交所30%、
-ST 5%。首日或无昨收时涨跌停价为空。`is_limit_up` / `is_limit_down` 按收盘价与涨跌停价
+由未复权昨收与板块/ST规则派生：主板10%、创业板注册制后与科创板20%、北交所30%；
+主板 ST 在 2026-07-06 前为5%、此后为10%。沪深注册制 IPO 前5个交易日、普通首日或无昨收时涨跌停价为空。`is_limit_up` / `is_limit_down` 按收盘价与涨跌停价
 （±0.01 容差）标记。
 
 逻辑主键：`code + date`

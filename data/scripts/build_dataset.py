@@ -24,6 +24,7 @@ import threading
 import time
 import urllib.request
 from bisect import bisect_right
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import StringIO
 from pathlib import Path
@@ -1750,17 +1751,39 @@ def build_shares_daily(
     )
 
 
-def _limit_pct_for_row(code: str, is_st: bool, trade_date: pd.Timestamp) -> float:
+def _limit_pct_for_row(
+    code: str,
+    is_st: bool,
+    trade_date: pd.Timestamp,
+    *,
+    list_date: Optional[pd.Timestamp] = None,
+    listing_session: Optional[int] = None,
+) -> Optional[float]:
     """A-share daily limit ratio by board / ST / registration-system rules."""
-    if is_st:
-        return 0.05
-    if code.startswith(("8", "4")):
+    if code.startswith(("8", "4", "92")):
         return 0.30
-    if code.startswith("688"):
+    is_star = code.startswith(("688", "689"))
+    is_chinext = code.startswith(("300", "301"))
+    registration_ipo = is_star or (
+        is_chinext
+        and list_date is not None
+        and list_date >= pd.Timestamp("2020-08-24")
+    ) or (
+        not is_star
+        and not is_chinext
+        and list_date is not None
+        and list_date >= pd.Timestamp("2023-04-10")
+    )
+    if registration_ipo and listing_session is not None and listing_session <= 5:
+        return None
+    if is_star:
         return 0.20
     # ChiNext registration system: 20% from 2020-08-24 onward.
-    if code.startswith("300") and trade_date >= pd.Timestamp("2020-08-24"):
+    if is_chinext and trade_date >= pd.Timestamp("2020-08-24"):
         return 0.20
+    if is_st:
+        # Main-board risk-warning shares moved from 5% to 10% on 2026-07-06.
+        return 0.10 if trade_date >= pd.Timestamp("2026-07-06") else 0.05
     return 0.10
 
 
@@ -1776,6 +1799,24 @@ def build_limit_prices(
     indicator_dir = PARQUET / "daily_indicators"
     output_dir = PARQUET / "limit_prices"
     output_dir.mkdir(parents=True, exist_ok=True)
+    master_path = PARQUET / "security_master" / "security_master.parquet"
+    list_dates: Dict[str, pd.Timestamp] = {}
+    if master_path.exists():
+        master = pd.read_parquet(master_path, columns=["code", "list_date"])
+        list_dates = {
+            str(row.code).zfill(6): pd.Timestamp(row.list_date).normalize()
+            for row in master.itertuples(index=False)
+            if pd.notna(row.list_date)
+        }
+    calendar_path = PARQUET / "reference" / "trade_calendar.parquet"
+    market_dates = pd.DatetimeIndex([])
+    if calendar_path.exists():
+        calendar = pd.read_parquet(calendar_path)
+        market_dates = pd.DatetimeIndex(
+            pd.to_datetime(
+                calendar.loc[calendar["is_trading_day"].astype(bool), "calendar_date"]
+            ).dt.normalize()
+        ).sort_values()
     bar_files = sorted(bar_dir.glob("*.parquet"))
     if codes:
         wanted = set(codes)
@@ -1805,19 +1846,39 @@ def build_limit_prices(
                 bars = bars.merge(indicators, on="date", how="left")
                 is_st = bars["isST"].fillna(0).astype(float).ne(0)
                 bars = bars.drop(columns=["isST"])
+            list_date = list_dates.get(code)
+            if list_date is not None and len(market_dates):
+                list_index = int(market_dates.searchsorted(list_date, side="left"))
+                listing_sessions = [
+                    int(market_dates.searchsorted(date, side="left")) - list_index + 1
+                    for date in bars["date"]
+                ]
+            else:
+                listing_sessions = [None] * len(bars)
             limit_pct = [
-                _limit_pct_for_row(code, bool(st), date)
-                for st, date in zip(is_st.tolist(), bars["date"].tolist())
+                _limit_pct_for_row(
+                    code,
+                    bool(st),
+                    date,
+                    list_date=list_date,
+                    listing_session=listing_session,
+                )
+                for st, date, listing_session in zip(
+                    is_st.tolist(), bars["date"].tolist(), listing_sessions
+                )
             ]
-            bars["limit_pct"] = limit_pct
+            bars["limit_pct"] = pd.to_numeric(
+                pd.Series(limit_pct, index=bars.index), errors="coerce"
+            )
             bars["limit_up"] = (
                 bars["prev_close"] * (1.0 + bars["limit_pct"]) + 1e-8
             ).round(2)
             bars["limit_down"] = (
                 bars["prev_close"] * (1.0 - bars["limit_pct"]) + 1e-8
             ).round(2)
-            # First trading day / missing prev close have no standard daily limit.
-            mask = bars["prev_close"].isna()
+            # First day/missing previous close and registration IPO sessions 1-5
+            # have no standard daily limit.
+            mask = bars["prev_close"].isna() | bars["limit_pct"].isna()
             bars.loc[mask, ["limit_up", "limit_down", "limit_pct"]] = pd.NA
             # Hit flags use 1-cent tolerance for exchange rounding differences.
             bars["is_limit_up"] = (
@@ -1993,12 +2054,6 @@ def build_daily_indicators(
     end_date = pd.Timestamp(config["end_date"] or dt.date.today())
     try:
         for index, row in enumerate(universe.itertuples(index=False), start=1):
-            # BaoStock sessions can expire during multi-hour full-market jobs.
-            if index > 1 and (index - 1) % 250 == 0:
-                bs.logout()
-                login = bs.login()
-                if login.error_code != "0":
-                    raise RuntimeError(f"BaoStock re-login failed: {login.error_msg}")
             code = str(row.code)
             output = PARQUET / "daily_indicators" / f"{code}.parquet"
             if output.exists() and not force:
@@ -2055,6 +2110,89 @@ def build_daily_indicators(
     atomic_json(
         {"failures": failures, "updated_at": dt.datetime.now()},
         STATE / "indicator_failures.json",
+    )
+
+
+def import_simtradedata_indicators(
+    source_root: Path,
+    limit: Optional[int] = None,
+    codes: Optional[Sequence[str]] = None,
+    force: bool = False,
+) -> None:
+    """Import the public SimTradeData valuation/status release into our schema."""
+    valuation_dir = source_root / "valuation"
+    status_path = source_root / "metadata" / "stock_status.parquet"
+    if not valuation_dir.exists() or not status_path.exists():
+        raise FileNotFoundError(
+            "SimTradeData extract must contain valuation/ and "
+            f"metadata/stock_status.parquet under {source_root}"
+        )
+    manifest_path = source_root / "manifest.json"
+    release_version = "unknown"
+    if manifest_path.exists():
+        release_version = str(
+            json.loads(manifest_path.read_text(encoding="utf-8")).get(
+                "version", "unknown"
+            )
+        )
+    source_name = f"simtradedata_release_{release_version}"
+
+    status = pd.read_parquet(status_path)
+    st_dates: Dict[str, set[pd.Timestamp]] = defaultdict(set)
+    halt_dates: Dict[str, set[pd.Timestamp]] = defaultdict(set)
+    for row in status.itertuples(index=False):
+        day = pd.Timestamp(str(row.date)).normalize()
+        target = st_dates if str(row.status_type).upper() == "ST" else halt_dates
+        for symbol in row.symbols:
+            target[str(symbol).split(".")[0]].add(day)
+
+    files = sorted(valuation_dir.glob("*.parquet"))
+    if codes:
+        requested = {str(code).zfill(6) for code in codes}
+        files = [path for path in files if path.stem.split(".")[0] in requested]
+    if limit:
+        files = files[:limit]
+
+    output_dir = PARQUET / "daily_indicators"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    built = skipped = 0
+    for index, path in enumerate(files, start=1):
+        code = path.stem.split(".")[0]
+        output = output_dir / f"{code}.parquet"
+        if output.exists() and not force:
+            skipped += 1
+            continue
+        valuation = pd.read_parquet(path)
+        dates = pd.to_datetime(valuation["date"]).dt.normalize()
+        frame = pd.DataFrame(
+            {
+                "date": dates,
+                "code": code,
+                "turn": pd.to_numeric(valuation["turnover_rate"], errors="coerce"),
+                "tradestatus": (~dates.isin(halt_dates.get(code, ()))).astype("int8"),
+                "pctChg": float("nan"),
+                "peTTM": pd.to_numeric(valuation["pe_ttm"], errors="coerce"),
+                "pbMRQ": pd.to_numeric(valuation["pb"], errors="coerce"),
+                "psTTM": pd.to_numeric(valuation["ps_ttm"], errors="coerce"),
+                "pcfNcfTTM": pd.to_numeric(valuation["pcf"], errors="coerce"),
+                "isST": dates.isin(st_dates.get(code, ())).astype("int8"),
+                "source": source_name,
+            }
+        )
+        atomic_parquet(frame, output)
+        built += 1
+        if index % 500 == 0 or index == len(files):
+            logging.info(
+                "SimTradeData indicators progress: %s/%s built=%s skipped=%s",
+                index,
+                len(files),
+                built,
+                skipped,
+            )
+    logging.info(
+        "SimTradeData indicators finished: built=%s skipped=%s",
+        built,
+        skipped,
     )
 
 
@@ -2737,6 +2875,7 @@ def parse_args() -> argparse.Namespace:
                  "announcements", "announcements-q1", "financial-availability",
                  "corporate-actions", "equity-structure", "shares-daily",
                  "limit-prices", "indicators", "bj-indicators", "bj-valuation",
+                 "import-simtradedata-indicators",
                  "warehouse", "catalog", "update-daily",
                  "reference",
                  "reference-intervals", "industry-indices", "sw-membership",
@@ -2746,6 +2885,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--limit", type=int, help="Limit securities for a pilot run")
     parser.add_argument("--codes", nargs="*", help="Only process specific six-digit codes")
     parser.add_argument("--force", action="store_true", help="Overwrite completed symbol files / redo update-daily even if already current")
+    parser.add_argument(
+        "--source-root",
+        type=Path,
+        default=RAW / "simtradelab" / "cn",
+        help="Extracted SimTradeData CN release root",
+    )
     parser.add_argument(
         "--skip-slow",
         action="store_true",
@@ -2799,6 +2944,13 @@ def main() -> None:
         build_limit_prices(config, args.limit, args.codes, args.force)
     if args.command in ("indicators", "all"):
         build_daily_indicators(config, args.limit, args.codes, args.force)
+    if args.command == "import-simtradedata-indicators":
+        import_simtradedata_indicators(
+            args.source_root,
+            args.limit,
+            args.codes,
+            args.force,
+        )
     if args.command in ("bj-indicators", "all"):
         build_bj_daily_indicators(config, args.limit, args.codes, args.force)
     if args.command in ("bj-valuation", "all"):

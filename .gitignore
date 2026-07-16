@@ -28,3 +28,6 @@ data/**/*.duckdb.wal
 **/*.parquet
 strategy/**/cache/*
 !strategy/**/cache/README.md
+
+# Reproducible rotating backtest ledgers (keep compact Markdown/JSON summaries)
+strategy/rotating/reports/**/*.csv

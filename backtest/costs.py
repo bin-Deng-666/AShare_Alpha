@@ -39,17 +39,32 @@ def flat_fee(notional: float, cost_bps: float) -> float:
     return abs(notional) * cost_bps / 10000.0
 
 
-def trade_fee(notional: float, side: str, params: Any) -> float:
-    """Buy/sell fee. Realistic mode: commission (+ stamp on sell) + transfer."""
+def trade_fee(
+    notional: float,
+    side: str,
+    params: Any,
+    trade_date: pd.Timestamp | str | None = None,
+) -> float:
+    """Buy/sell fee, optionally switching statutory rates by execution date."""
     n = abs(float(notional))
     if n <= 0:
         return 0.0
     if not getattr(params, "enable_realistic_costs", False):
         return flat_fee(n, params.cost_bps)
     commission = max(float(params.min_commission), n * float(params.commission_bps) / 10000.0)
-    fee = commission + n * float(params.transfer_fee_bps) / 10000.0
+    transfer_fee_bps = float(params.transfer_fee_bps)
+    if getattr(params, "historical_costs", False) and trade_date is not None:
+        transfer_fee_bps = (
+            0.2 if pd.Timestamp(trade_date) < pd.Timestamp("2022-04-29") else 0.1
+        )
+    fee = commission + n * transfer_fee_bps / 10000.0
     if str(side).upper() == "SELL":
-        fee += n * float(params.stamp_tax_bps) / 10000.0
+        stamp_tax_bps = float(params.stamp_tax_bps)
+        if getattr(params, "historical_costs", False) and trade_date is not None:
+            stamp_tax_bps = (
+                10.0 if pd.Timestamp(trade_date) < pd.Timestamp("2023-08-28") else 5.0
+            )
+        fee += n * stamp_tax_bps / 10000.0
     return float(fee)
 
 

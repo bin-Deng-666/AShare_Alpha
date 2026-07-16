@@ -68,6 +68,98 @@ def test_build_panel_dataset_never_reads_after_explicit_data_cutoff(
     assert max(end for _, end in requested) <= pd.Timestamp("2023-12-31")
 
 
+def test_backtest_can_report_the_single_fixed_market_gate_candidate(
+    tmp_path, monkeypatch
+) -> None:
+    evaluation_dates = pd.to_datetime(["2024-01-02", "2024-01-03"])
+    scores = pd.DataFrame(
+        {
+            "code": [f"00000{index}" for index in range(5)] * 2,
+            "date": evaluation_dates.repeat(5),
+            "eligible": True,
+            "target_rank": list(range(5)) * 2,
+            "label_available_date": evaluation_dates.repeat(5),
+            "factor_score": list(range(5)) * 2,
+            "elastic_score": list(range(5)) * 2,
+            "gbrt_score": list(range(5)) * 2,
+            "ensemble_score": list(range(5)) * 2,
+        }
+    )
+    score_root = tmp_path / "scores"
+    partition = score_root / "year=2024" / "scores.parquet"
+    partition.parent.mkdir(parents=True)
+    scores.to_parquet(partition, index=False)
+
+    observed_index_bounds: list[tuple[pd.Timestamp, pd.Timestamp]] = []
+    monkeypatch.setattr(pipeline, "load_execution_bars", lambda *args: pd.DataFrame())
+
+    def fake_index_bars(code, start, end):
+        observed_index_bounds.append((pd.Timestamp(start), pd.Timestamp(end)))
+        month_ends = pd.date_range("2023-01-31", periods=12, freq="ME")
+        return pd.DataFrame(
+            {
+                "date": month_ends,
+                "open": range(100, 112),
+                "close": range(100, 112),
+            }
+        )
+
+    monkeypatch.setattr(pipeline, "load_index_bars", fake_index_bars)
+    gate_calls: list[bool] = []
+
+    def fake_portfolio(*args, entry_gate=None, initial_capital=1_000_000.0, **kwargs):
+        is_gated = entry_gate is not None
+        gate_calls.append(is_gated)
+        equity = pd.DataFrame(
+            {
+                "date": evaluation_dates,
+                "cash": [initial_capital, initial_capital],
+                "market_value": [0.0, 0.0],
+                "equity": [initial_capital, initial_capital * (1.02 if is_gated else 1.01)],
+                "n_positions": [0, 0],
+                "cash_ratio": [1.0, 1.0],
+                "allow_new_buys": [is_gated, is_gated],
+            }
+        )
+        equity["daily_ret"] = equity["equity"].pct_change().fillna(0.0)
+        equity["daily_pnl"] = equity["equity"].diff().fillna(0.0)
+        equity["nav"] = equity["equity"] / initial_capital
+        return {
+            "equity": equity,
+            "trades": pd.DataFrame(),
+            "pending_orders": pd.DataFrame(),
+            "cash": initial_capital,
+        }
+
+    monkeypatch.setattr(pipeline, "run_portfolio", fake_portfolio)
+    monkeypatch.setattr(
+        pipeline,
+        "compute_metrics",
+        lambda *args, **kwargs: {
+            "returns": {"ann_return": 0.0},
+            "risk": {"sharpe": 0.0, "max_drawdown": 0.0},
+            "trading": {"turnover_ann": 0.0},
+            "merged_daily": pd.DataFrame(),
+        },
+    )
+
+    payload = pipeline.run_backtest_dataset(
+        str(evaluation_dates[0].date()),
+        str(evaluation_dates[-1].date()),
+        score_root=score_root,
+        report_root=tmp_path / "reports",
+        include_market_gate_candidate=True,
+    )
+
+    assert set(payload["scenarios"]).issuperset(
+        {"gbrt_historical", "gbrt_market_gate_historical", "gbrt_market_gate_flat_20bp_roundtrip"}
+    )
+    assert any(gate_calls)
+    assert payload["market_gate_candidate"]["paired_daily_return_difference"]["hac_lags"] == 20
+    assert min(start for start, _ in observed_index_bounds) < evaluation_dates[0]
+    assert max(end for _, end in observed_index_bounds) == evaluation_dates[-1]
+
+
 def test_run_backtest_dataset_does_not_cross_the_public_end_date(
     tmp_path, monkeypatch
 ) -> None:

@@ -17,6 +17,7 @@ def run_portfolio(
     *,
     params: Params = DEFAULT_PARAMS,
     initial_capital: float = 1_000_000.0,
+    entry_gate: pd.DataFrame | None = None,
 ) -> dict[str, Any]:
     """Turn close-of-day scores into auditable next-open fills."""
     score_frame = scores.copy()
@@ -40,6 +41,31 @@ def run_portfolio(
     bar_lookup = bar_frame.set_index(["date", "code"], drop=False)
     trading_dates = list(pd.DatetimeIndex(bar_frame["date"].drop_duplicates()).sort_values())
 
+    gate_by_month: dict[pd.Period, bool] | None = None
+    if entry_gate is not None:
+        missing_gate = {"effective_month", "allow_new_buys"}.difference(
+            entry_gate.columns
+        )
+        if missing_gate:
+            raise ValueError(
+                "entry gate missing columns: " + ", ".join(sorted(missing_gate))
+            )
+        gate_frame = entry_gate[["effective_month", "allow_new_buys"]].copy()
+        gate_frame["effective_month"] = pd.to_datetime(
+            gate_frame["effective_month"]
+        ).dt.to_period("M")
+        if gate_frame["effective_month"].duplicated().any():
+            raise ValueError("entry gate contains duplicate effective months")
+        gate_by_month = {
+            month: bool(allowed)
+            for month, allowed in gate_frame.itertuples(index=False, name=None)
+        }
+
+    def allows_new_buys(execution_date: pd.Timestamp) -> bool:
+        if gate_by_month is None:
+            return True
+        return gate_by_month.get(pd.Timestamp(execution_date).to_period("M"), False)
+
     cash = float(initial_capital)
     positions: dict[str, dict[str, Any]] = {}
     pending: list[dict[str, Any]] = []
@@ -60,6 +86,9 @@ def run_portfolio(
                 continue
             side = str(order.get("side", "BUY")).upper()
             if side == "SELL" and order["code"] not in positions:
+                continue
+            if side == "BUY" and not allows_new_buys(trade_date):
+                # A delayed buy must not cross into a newly risk-off month.
                 continue
             key = (trade_date, order["code"])
             if key not in bar_lookup.index:
@@ -269,7 +298,16 @@ def run_portfolio(
             0,
             params.names_per_sleeve - len(held_in_sleeve) - pending_buys_in_sleeve,
         )
-        if not day_scores.empty and open_slots > 0:
+        planned_entry_date = (
+            trading_dates[date_index + 1]
+            if date_index + 1 < len(trading_dates)
+            else None
+        )
+        entry_is_allowed = gate_by_month is None or (
+            planned_entry_date is not None
+            and allows_new_buys(planned_entry_date)
+        )
+        if not day_scores.empty and open_slots > 0 and entry_is_allowed:
             quantile_count = max(1, int(np.ceil(len(day_scores) * params.enter_quantile)))
             candidates = day_scores.head(quantile_count)
             candidates = candidates.loc[
@@ -307,6 +345,7 @@ def run_portfolio(
                 "equity": cash + market_value,
                 "n_positions": len(positions),
                 "cash_ratio": cash / (cash + market_value) if cash + market_value else 0.0,
+                "allow_new_buys": allows_new_buys(trade_date),
             }
         )
 

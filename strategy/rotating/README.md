@@ -52,6 +52,13 @@ tar -xzf data\raw\simtradelab\simtradelab-data-cn-2026-05-26.tar.gz `
   --score-root strategy\rotating\cache\experiments\v2_path_scores `
   --report-root strategy\rotating\reports\experiments\v2_path
 
+# v0.2 冻结后的唯一固定市场门控候选（开发期失败，不进入默认策略）：
+.venv\Scripts\python.exe -m strategy.rotating.cli.run_pipeline backtest `
+  --start 2021-01-01 --end 2023-12-31 `
+  --score-root strategy\rotating\cache\experiments\v2_endpoint_scores `
+  --report-root strategy\rotating\reports\experiments\v3_market_gate `
+  --market-gate-candidate
+
 # 只在上述开发期结果冻结端点标签后，构建并评分一次留出期：
 .venv\Scripts\python.exe -m strategy.rotating.cli.run_pipeline build-panel `
   --start 2021-01-01 --end 2026-05-22 --data-cutoff 2026-05-22 `
@@ -73,6 +80,6 @@ Copy-Item -Recurse `
 .venv\Scripts\python.exe run.py rotating --date 2026-05-22
 ```
 
-当前正式结果见 [`reports/development/PERFORMANCE.md`](reports/development/PERFORMANCE.md) 与 [`reports/holdout/PERFORMANCE.md`](reports/holdout/PERFORMANCE.md)，标签/特征选择过程见 [`experiments/20260716_interval_label_feature_race.md`](experiments/20260716_interval_label_feature_race.md)。结果用于研究，不构成收益承诺；封存期打开后不再调参。
+当前正式结果见 [`reports/development/PERFORMANCE.md`](reports/development/PERFORMANCE.md) 与 [`reports/holdout/PERFORMANCE.md`](reports/holdout/PERFORMANCE.md)，标签/特征选择过程见 [`experiments/20260716_interval_label_feature_race.md`](experiments/20260716_interval_label_feature_race.md)，后续固定市场门控的失败记录见 [`experiments/20260716_market_gate_feature_race.md`](experiments/20260716_market_gate_feature_race.md)。结果用于研究，不构成收益承诺；封存期打开后不再调参。
 
 详见 [`docs/STRATEGY.md`](docs/STRATEGY.md)。

@@ -9,6 +9,104 @@ from strategy.rotating.config.params import DEFAULT_PARAMS
 from strategy.rotating.engine.portfolio import run_portfolio
 
 
+def test_market_gate_cancels_delayed_buy_when_the_execution_month_turns_off() -> None:
+    dates = pd.to_datetime(["2024-01-30", "2024-01-31", "2024-02-01"])
+    scores = pd.DataFrame(
+        {
+            "code": ["000001"],
+            "date": [dates[0]],
+            "ensemble_score": [1.0],
+            "eligible": [True],
+            "industry": ["银行"],
+            "adv_20": [100e6],
+        }
+    )
+    bars = pd.DataFrame(
+        {
+            "code": "000001",
+            "date": dates,
+            "open": [10.0, 11.0, 10.5],
+            "close": [10.0, 11.0, 10.6],
+            "high": [10.2, 11.0, 10.8],
+            "low": [9.8, 11.0, 10.3],
+            "limit_up": [11.0, 11.0, 12.1],
+            "trade_status": True,
+        }
+    )
+    gate = pd.DataFrame(
+        {
+            "effective_month": pd.to_datetime(["2024-01-01", "2024-02-01"]),
+            "allow_new_buys": [True, False],
+        }
+    )
+
+    result = run_portfolio(
+        scores,
+        bars,
+        params=replace(
+            DEFAULT_PARAMS,
+            names_per_sleeve=1,
+            enable_realistic_costs=False,
+            enable_open_slippage=False,
+        ),
+        initial_capital=100_000.0,
+        entry_gate=gate,
+    )
+
+    assert result["trades"].empty
+    assert result["pending_orders"].empty
+    assert result["equity"]["allow_new_buys"].tolist() == [True, True, False]
+
+
+def test_market_gate_keeps_existing_sell_orders_active_in_risk_off_month() -> None:
+    dates = pd.to_datetime(["2024-01-30", "2024-01-31", "2024-02-01"])
+    scores = pd.DataFrame(
+        {
+            "code": ["000001"],
+            "date": [dates[0]],
+            "ensemble_score": [1.0],
+            "eligible": [True],
+            "industry": ["银行"],
+            "adv_20": [100e6],
+        }
+    )
+    bars = pd.DataFrame(
+        {
+            "code": "000001",
+            "date": dates,
+            "open": [10.0, 10.0, 11.0],
+            "close": [10.0, 10.5, 11.0],
+            "high": [10.2, 10.7, 11.2],
+            "low": [9.8, 9.8, 10.8],
+            "trade_status": True,
+        }
+    )
+    gate = pd.DataFrame(
+        {
+            "effective_month": pd.to_datetime(["2024-01-01", "2024-02-01"]),
+            "allow_new_buys": [True, False],
+        }
+    )
+
+    result = run_portfolio(
+        scores,
+        bars,
+        params=replace(
+            DEFAULT_PARAMS,
+            holding_sessions=1,
+            names_per_sleeve=1,
+            enable_realistic_costs=False,
+            enable_open_slippage=False,
+        ),
+        initial_capital=100_000.0,
+        entry_gate=gate,
+    )
+
+    assert result["trades"]["side"].tolist() == ["BUY", "SELL"]
+    assert result["trades"]["date"].tolist() == [dates[1], dates[2]]
+    assert result["pending_orders"].empty
+
+
 def test_run_portfolio_fills_signal_at_next_open_and_floors_to_board_lot() -> None:
     dates = pd.bdate_range("2024-01-02", periods=2)
     scores = pd.DataFrame(

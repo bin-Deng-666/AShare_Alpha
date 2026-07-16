@@ -20,6 +20,7 @@ from strategy.rotating.features.build_panel import (
     MODEL_TARGET_COLUMN,
     build_factor_panel,
 )
+from strategy.rotating.features.market_regime import build_monthly_trend_gate
 from strategy.rotating.lib.data import (
     load_execution_bars,
     load_index_bars,
@@ -518,6 +519,158 @@ def _append_score_diagnostics_markdown(
         )
 
 
+def _hac_mean_summary(values: pd.Series, *, hac_lags: int) -> dict[str, Any]:
+    """Summarize a paired daily-return difference with a fixed HAC bandwidth."""
+    series = pd.Series(values, dtype=float).dropna().reset_index(drop=True)
+    standard_error = None
+    t_stat = None
+    if len(series) > 1:
+        centered = series.to_numpy(dtype=float) - float(series.mean())
+        long_run_variance = float(np.dot(centered, centered) / len(centered))
+        effective_lags = min(int(hac_lags), len(centered) - 1)
+        for lag in range(1, effective_lags + 1):
+            covariance = float(
+                np.dot(centered[lag:], centered[:-lag]) / len(centered)
+            )
+            weight = 1.0 - lag / (hac_lags + 1.0)
+            long_run_variance += 2.0 * weight * covariance
+        standard_error = float(
+            np.sqrt(max(long_run_variance, 0.0) / len(centered))
+        )
+        if standard_error > 0.0:
+            t_stat = float(series.mean() / standard_error)
+    return {
+        "days": int(len(series)),
+        "mean_daily_difference": float(series.mean()) if len(series) else None,
+        "annualized_mean_difference": (
+            float(series.mean() * 242.0) if len(series) else None
+        ),
+        "hac_lags": int(hac_lags),
+        "hac_standard_error": standard_error,
+        "hac_t_stat": t_stat,
+    }
+
+
+def _compound_returns(values: pd.Series) -> float | None:
+    series = pd.to_numeric(values, errors="coerce").dropna()
+    if series.empty:
+        return None
+    return float((1.0 + series).prod() - 1.0)
+
+
+def _market_gate_candidate_diagnostics(
+    baseline: dict[str, Any],
+    candidate: dict[str, Any],
+    gate: pd.DataFrame,
+    benchmark: pd.DataFrame,
+) -> dict[str, Any]:
+    base_equity = baseline["equity"].copy()
+    gate_equity = candidate["equity"].copy()
+    for frame in (base_equity, gate_equity):
+        frame["date"] = pd.to_datetime(frame["date"]).dt.normalize()
+    paired = base_equity[["date", "daily_ret"]].merge(
+        gate_equity[["date", "daily_ret"]],
+        on="date",
+        how="inner",
+        suffixes=("_baseline", "_gate"),
+        validate="one_to_one",
+    )
+    paired["difference"] = paired["daily_ret_gate"] - paired["daily_ret_baseline"]
+
+    gate_frame = gate.copy()
+    gate_frame["effective_month"] = pd.to_datetime(
+        gate_frame["effective_month"]
+    ).dt.to_period("M")
+    state_by_month = gate_frame.set_index("effective_month")[
+        "allow_new_buys"
+    ].astype(bool)
+    gate_equity["_month"] = gate_equity["date"].dt.to_period("M")
+    gate_equity["_gate_on"] = gate_equity["_month"].map(state_by_month).fillna(False)
+    evaluation_months = pd.Index(gate_equity["_month"].unique())
+    evaluation_gate = gate_frame.loc[
+        gate_frame["effective_month"].isin(evaluation_months)
+    ].sort_values("effective_month")
+
+    transitions: list[dict[str, Any]] = []
+    previous: bool | None = None
+    for row in evaluation_gate.itertuples(index=False):
+        current = bool(row.allow_new_buys)
+        if previous is None or current != previous:
+            transitions.append(
+                {
+                    "effective_month": str(row.effective_month),
+                    "allow_new_buys": current,
+                }
+            )
+        previous = current
+
+    benchmark_frame = benchmark.copy()
+    if not benchmark_frame.empty:
+        benchmark_frame["date"] = pd.to_datetime(
+            benchmark_frame["date"]
+        ).dt.normalize()
+        benchmark_frame["_month"] = benchmark_frame["date"].dt.to_period("M")
+        benchmark_frame["_gate_on"] = (
+            benchmark_frame["_month"].map(state_by_month).fillna(False)
+        )
+    off_candidate = gate_equity.loc[~gate_equity["_gate_on"], "daily_ret"]
+    off_benchmark = (
+        benchmark_frame.loc[~benchmark_frame["_gate_on"], "ret"]
+        if not benchmark_frame.empty
+        else pd.Series(dtype=float)
+    )
+
+    baseline_total = _compound_returns(base_equity["daily_ret"])
+    candidate_total = _compound_returns(gate_equity["daily_ret"])
+    return {
+        "rule": {
+            "index_code": "000300",
+            "moving_average_months": 10,
+            "comparison": "completed_month_end_close > inclusive_10_month_sma",
+            "effective_from": "next_calendar_month",
+            "cash_return_assumption": 0.0,
+        },
+        "gate_on_month_fraction": (
+            float(evaluation_gate["allow_new_buys"].astype(bool).mean())
+            if not evaluation_gate.empty
+            else None
+        ),
+        "gate_on_trading_day_fraction": (
+            float(gate_equity["_gate_on"].mean()) if not gate_equity.empty else None
+        ),
+        "mean_invested_fraction": (
+            float((1.0 - gate_equity["cash_ratio"]).mean())
+            if not gate_equity.empty
+            else None
+        ),
+        "risk_off_cash_only_day_fraction": (
+            float(
+                gate_equity.loc[~gate_equity["_gate_on"], "n_positions"].eq(0).mean()
+            )
+            if (~gate_equity["_gate_on"]).any()
+            else None
+        ),
+        "risk_off_candidate_return": _compound_returns(off_candidate),
+        "risk_off_benchmark_return": _compound_returns(off_benchmark),
+        "risk_off_positive_benchmark_daily_return_sum": (
+            float(off_benchmark.clip(lower=0.0).sum())
+            if not off_benchmark.empty
+            else None
+        ),
+        "baseline_total_return": baseline_total,
+        "candidate_total_return": candidate_total,
+        "candidate_minus_baseline_total_return": (
+            candidate_total - baseline_total
+            if candidate_total is not None and baseline_total is not None
+            else None
+        ),
+        "transitions": transitions,
+        "paired_daily_return_difference": _hac_mean_summary(
+            paired["difference"], hac_lags=20
+        ),
+    }
+
+
 def run_backtest_dataset(
     start: str,
     end: str,
@@ -526,6 +679,7 @@ def run_backtest_dataset(
     report_root: str | Path = REPORT_ROOT,
     params: Params = DEFAULT_PARAMS,
     initial_capital: float = 1_000_000.0,
+    include_market_gate_candidate: bool = False,
 ) -> dict[str, Any]:
     """Run realistic execution plus fixed-path 20/40/80bp cost stresses."""
     first = pd.Timestamp(start).normalize()
@@ -538,15 +692,32 @@ def run_backtest_dataset(
     # day may remain pending, but later bars and fills must not leak into the
     # report's fees, turnover or realized PnL.
     bars = load_execution_bars(first, last)
-    benchmark = load_index_bars("000300", first, last)
+    benchmark_start = (
+        first - pd.DateOffset(months=12)
+        if include_market_gate_candidate
+        else first
+    )
+    index_history = load_index_bars("000300", benchmark_start, last)
+    index_history["date"] = pd.to_datetime(index_history["date"]).dt.normalize()
+    benchmark = index_history.loc[index_history["date"].between(first, last)].copy()
     benchmark["date"] = pd.to_datetime(benchmark["date"]).dt.normalize()
     benchmark["ret"] = benchmark["open"].pct_change().fillna(0.0)
 
-    scenarios: dict[str, tuple[str, Params | None, float | None]] = {
-        "factor_historical": ("factor_score", params, None),
-        "elastic_historical": ("elastic_score", params, None),
-        "gbrt_historical": ("gbrt_score", params, None),
-        "ensemble_historical": ("ensemble_score", params, None),
+    market_gate = None
+    if include_market_gate_candidate:
+        # The final evaluation month cannot produce an in-bound next-month
+        # entry, so exclude it rather than treating a partial month as complete.
+        final_month_start = last.to_period("M").to_timestamp()
+        completed_index_history = index_history.loc[
+            index_history["date"].lt(final_month_start)
+        ]
+        market_gate = build_monthly_trend_gate(completed_index_history)
+
+    scenarios: dict[str, tuple[str, Params | None, float | None, bool]] = {
+        "factor_historical": ("factor_score", params, None, False),
+        "elastic_historical": ("elastic_score", params, None, False),
+        "gbrt_historical": ("gbrt_score", params, None, False),
+        "ensemble_historical": ("ensemble_score", params, None, False),
     }
     for score_column in (
         "factor_score",
@@ -555,12 +726,31 @@ def run_backtest_dataset(
         "ensemble_score",
     ):
         label = score_column.removesuffix("_score")
-        scenarios[f"{label}_flat_20bp_roundtrip"] = (score_column, None, 20.0)
+        scenarios[f"{label}_flat_20bp_roundtrip"] = (
+            score_column,
+            None,
+            20.0,
+            False,
+        )
     for round_trip_bps in (40, 80):
         scenarios[f"gbrt_flat_{round_trip_bps}bp_roundtrip"] = (
             SELECTED_RESEARCH_SCORE_COLUMN,
             None,
             float(round_trip_bps),
+            False,
+        )
+    if include_market_gate_candidate:
+        scenarios["gbrt_market_gate_historical"] = (
+            SELECTED_RESEARCH_SCORE_COLUMN,
+            params,
+            None,
+            True,
+        )
+        scenarios["gbrt_market_gate_flat_20bp_roundtrip"] = (
+            SELECTED_RESEARCH_SCORE_COLUMN,
+            None,
+            20.0,
+            True,
         )
 
     root = Path(report_root)
@@ -572,10 +762,17 @@ def run_backtest_dataset(
         cost_bps=0.0,
         enable_open_slippage=False,
     )
-    flat_paths: dict[str, dict[str, Any]] = {}
-    for name, (score_column, scenario_params, round_trip_bps) in scenarios.items():
+    flat_paths: dict[tuple[str, bool], dict[str, Any]] = {}
+    scenario_results: dict[str, dict[str, Any]] = {}
+    for name, (
+        score_column,
+        scenario_params,
+        round_trip_bps,
+        use_market_gate,
+    ) in scenarios.items():
         scenario_scores = scores.copy()
         scenario_scores["ensemble_score"] = scenario_scores[score_column]
+        entry_gate = market_gate if use_market_gate else None
         if round_trip_bps is None:
             assert scenario_params is not None
             result = run_portfolio(
@@ -583,20 +780,24 @@ def run_backtest_dataset(
                 bars,
                 params=scenario_params,
                 initial_capital=initial_capital,
+                entry_gate=entry_gate,
             )
         else:
-            if score_column not in flat_paths:
-                flat_paths[score_column] = run_portfolio(
+            flat_path_key = (score_column, use_market_gate)
+            if flat_path_key not in flat_paths:
+                flat_paths[flat_path_key] = run_portfolio(
                     scenario_scores,
                     bars,
                     params=zero_cost_params,
                     initial_capital=initial_capital,
+                    entry_gate=entry_gate,
                 )
             result = _apply_flat_cost_stress(
-                flat_paths[score_column],
+                flat_paths[flat_path_key],
                 per_side_bps=round_trip_bps / 2.0,
                 initial_capital=initial_capital,
             )
+        scenario_results[name] = result
         metrics = compute_metrics(
             result["equity"],
             result["trades"],
@@ -616,6 +817,25 @@ def run_backtest_dataset(
             result["trades"].to_csv(root / "trades.csv", index=False)
         summaries[name] = metrics
 
+    market_gate_diagnostics = None
+    if include_market_gate_candidate:
+        assert market_gate is not None
+        market_gate.to_csv(root / "market_gate.csv", index=False)
+        (root / "MARKET_GATE.json").write_text(
+            market_gate.to_json(
+                orient="records",
+                date_format="iso",
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        market_gate_diagnostics = _market_gate_candidate_diagnostics(
+            scenario_results["gbrt_historical"],
+            scenario_results["gbrt_market_gate_historical"],
+            market_gate,
+            benchmark,
+        )
+
     payload = {
         "strategy": "rotating",
         "start": str(first.date()),
@@ -630,6 +850,7 @@ def run_backtest_dataset(
             evaluation_end=last,
             target_column="model_target_rank",
         ),
+        "market_gate_candidate": market_gate_diagnostics,
         "scenarios": summaries,
     }
     (root / "PERFORMANCE.json").write_text(
@@ -667,6 +888,48 @@ def run_backtest_dataset(
         title="模型训练标签 Rank IC",
         diagnostics=payload["model_target_diagnostics"],
     )
+    if market_gate_diagnostics is not None:
+        paired = market_gate_diagnostics["paired_daily_return_difference"]
+        markdown.extend(
+            [
+                "",
+                "## 固定沪深 300 月度趋势门控",
+                "",
+                "规则：最近完整月末收盘严格高于包含该月的 10 个月月末收盘均线时，下一月允许新开仓；否则新增 sleeve 留现金。",
+                "",
+                "| 开启月份占比 | 开启交易日占比 | 平均资金暴露 | 候选减基准总收益 | 配对日收益差 HAC(20) t |",
+                "|---:|---:|---:|---:|---:|",
+                "| {months:.1%} | {days:.1%} | {exposure:.1%} | {difference:.2%} | {hac:.2f} |".format(
+                    months=float(
+                        market_gate_diagnostics.get(
+                            "gate_on_month_fraction", float("nan")
+                        )
+                    ),
+                    days=float(
+                        market_gate_diagnostics.get(
+                            "gate_on_trading_day_fraction", float("nan")
+                        )
+                    ),
+                    exposure=float(
+                        market_gate_diagnostics.get(
+                            "mean_invested_fraction", float("nan")
+                        )
+                    ),
+                    difference=float(
+                        market_gate_diagnostics.get(
+                            "candidate_minus_baseline_total_return", float("nan")
+                        )
+                    ),
+                    hac=float(
+                        paired["hac_t_stat"]
+                        if paired["hac_t_stat"] is not None
+                        else float("nan")
+                    ),
+                ),
+                "",
+                "`MARKET_GATE.json` 保存每个月的来源月末、SMA 与十个实际月末观测；该门控不改变五日训练标签或模型分数。",
+            ]
+        )
     markdown.extend(
         [
             "",

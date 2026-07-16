@@ -6,7 +6,7 @@
 | 频率 | 日频；信号日 T 收盘后决策，T+1 开盘成交 |
 | 市场 | 沪深 A 股；北交所暂不纳入 |
 | 定位 | 5 日分片的横截面因子 / Elastic Net / 浅层 GBRT 轮动 |
-| 研究依据 | [`daily_strategy_research.md`](../../../docs/research/daily_strategy_research.md)；[`interval_label_feature_engineering.md`](../../../docs/research/interval_label_feature_engineering.md) |
+| 研究依据 | [`daily_strategy_research.md`](../../../docs/research/daily_strategy_research.md)；[`interval_label_feature_engineering.md`](../../../docs/research/interval_label_feature_engineering.md)；[`multihorizon_daily_feature_engineering.md`](../../../docs/research/multihorizon_daily_feature_engineering.md) |
 
 ## 1. 目标与边界
 
@@ -14,11 +14,12 @@
 
 第一版不做深度学习、当日回转、盘后固定价格的历史回填、当前成分回填历史、当前名称 ST 过滤或北交所混合建模。
 
-## 2. 三个公共 seam
+## 2. 四个公共 seam
 
 1. `build_factor_panel(start, end, ...)`：从完整交易历史计算截至 T 日可得特征，最后才应用信号日股票池过滤；返回特征、标签可得日与执行字段。
 2. `walk_forward_score(panel, ...)`：同一日期的横截面不可拆 fold；每个 T 日预测只能使用 `label_available_date <= T` 的训练行，并输出固定因子、Elastic Net、GBRT 三组分数。
-3. `run_portfolio(scores, bars, ...)`：把 T 日分数转为 T+1 开盘成交，维护 5 个日度子组合和未成交订单，处理 T+1、停牌、一字涨跌停、100 股取整、容量与历史时变成本。
+3. `build_monthly_trend_gate(index_bars)`：从真实月末交易日构造下一日历月生效的固定 10 个月趋势状态，保存来源月末与十个实际观测。
+4. `run_portfolio(scores, bars, ..., entry_gate=None)`：把 T 日分数转为 T+1 开盘成交，维护 5 个日度子组合和未成交订单，处理 T+1、停牌、一字涨跌停、100 股取整、容量与历史时变成本；可选状态只拦截新买单，不拦截卖单。
 
 测试只通过这三个公共接口观察行为，不测试内部 helper。
 
@@ -26,7 +27,8 @@
 
 - `build_factor_panel`：在 25 日小面板中插入一个低成交额日，该日仍必须进入前序 rolling；日期化 ST 只排除当日，当前名称不影响历史；缺失 PE 产生缺失标志且不能得到最高价值分。
 - `walk_forward_score`：修改预测日之后的目标值，预测必须逐字节不变；`label_available_date > prediction_date` 的行不得进入拟合；同一天全部股票只能属于同一时间 fold。
-- `run_portfolio`：T 日信号只能在 T+1 开盘成交；一字涨停买单和一字跌停卖单必须积压；买入按 100 股取整；2023-08-28 前后的卖出印花税应不同；同一子组合严格持有五个交易日而非五个日历日。
+- `build_monthly_trend_gate`：只使用已结束月份的最后交易日；不足十个月和等于均线时为关闭，状态只能影响下一月。
+- `run_portfolio`：T 日信号只能在 T+1 开盘成交；一字涨停买单和一字跌停卖单必须积压；买入按 100 股取整；2023-08-28 前后的卖出印花税应不同；同一子组合首次退出复核至少等待五个交易日而非五个日历日，仍在 top 25% 时按缓冲继续持有。
 
 ## 3. 数据时序
 
@@ -107,5 +109,7 @@ v0.2 在开发期预注册并采纳八项日线特征：五日隔夜缺口、十
 | 三模型等权 | -7.76% / -0.62 / -30.82% | 7.98% / 0.58 / -17.28% |
 
 端点 GBRT 的平均日度 Rank IC 在开发期/封存期为 0.08719/0.09125，正 IC 日占比为 84.60%/81.20%，HAC(4) t 为 14.15/10.62。报告同时保存逐年和五 cohort 诊断，且只保留 `label_available_date` 不晚于对应边界的标签。固定零成本成交路径上的 20/40/80bp 往返成本压力，开发期年化为 -2.80%/-3.83%/-5.98%，封存期为 13.20%/13.05%/12.74%；成本冲击保持成交路径不变，因此结果随费率单调下降。路径均值标签只在 2021 年收益和 Sharpe 双胜，2022、2023 均落后且回撤恶化 2.68pp，故按预注册门槛选择五日端点标签。完整决策见 [`20260716_interval_label_feature_race.md`](../experiments/20260716_interval_label_feature_race.md)。
+
+v0.2 冻结后的唯一后续候选是固定沪深 300 十个月月度趋势门控。它把开发期最大回撤从 -25.16% 降到 -17.89%，但年化收益从 -0.98% 降到 -3.13%、Sharpe 从 -0.06 降到 -0.34，且逐年收益与 Sharpe 双胜为 0/3；按事前门槛拒绝，默认策略不变。完整失败实验见 [`20260716_market_gate_feature_race.md`](../experiments/20260716_market_gate_feature_race.md)。
 
 封存期沪深 300 年化约 15.38%，高于策略的 13.24%，但其最大回撤约 19.15%，高于策略的 9.18%。GBRT 封存收益和 Sharpe 均高于固定因子与 Elastic Net；封存结果没有被用于调整标签或参数。开发期绝对收益仍为负，且 DSR、公告质量财务 PIT 与前瞻纸面交易尚未完成，浅层 GBRT 因此只能作为默认研究信号，不能宣称稳定产生基准超额或通过生产准入；适配器会显式返回 `research_only_forward_validation_required`。完整结果见开发期和封存期 `PERFORMANCE.md`。

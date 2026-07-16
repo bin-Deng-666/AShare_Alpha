@@ -43,6 +43,11 @@ def parse_args() -> argparse.Namespace:
         "--report-root",
         help="Backtest report directory; defaults to strategy/rotating/reports",
     )
+    parser.add_argument(
+        "--market-gate-candidate",
+        action="store_true",
+        help="Also report the preregistered CSI 300 10-month entry-gate candidate",
+    )
     return parser.parse_args()
 
 
@@ -83,6 +88,7 @@ def main() -> None:
             args.start,
             args.end,
             initial_capital=args.capital,
+            include_market_gate_candidate=args.market_gate_candidate,
             **({"score_root": args.score_root} if args.score_root else {}),
             **({"report_root": args.report_root} if args.report_root else {}),
         )

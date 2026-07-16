@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, replace
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -20,7 +20,10 @@ from strategy.rotating.features.build_panel import (
     MODEL_TARGET_COLUMN,
     build_factor_panel,
 )
-from strategy.rotating.features.market_regime import build_monthly_trend_gate
+from strategy.rotating.features.market_regime import (
+    build_monthly_trend_gate,
+    monthly_gate_state_by_month,
+)
 from strategy.rotating.lib.data import (
     load_execution_bars,
     load_index_bars,
@@ -36,6 +39,20 @@ SCORE_ROOT = CACHE_ROOT / "scores"
 REPORT_ROOT = STRATEGY_ROOT / "reports"
 SELECTED_RESEARCH_SCORE_COLUMN = "gbrt_score"
 SCORE_SPEC_FILENAME = "_SCORE_SPEC.json"
+
+
+@dataclass(frozen=True)
+class _BacktestScenario:
+    score_column: str
+    params: Params | None
+    round_trip_bps: float | None
+    use_market_gate: bool = False
+
+
+@dataclass(frozen=True)
+class _FlatPathKey:
+    score_column: str
+    use_market_gate: bool
 
 
 def _atomic_parquet(frame: pd.DataFrame, path: Path) -> None:
@@ -578,12 +595,10 @@ def _market_gate_candidate_diagnostics(
     paired["difference"] = paired["daily_ret_gate"] - paired["daily_ret_baseline"]
 
     gate_frame = gate.copy()
+    state_by_month = monthly_gate_state_by_month(gate_frame)
     gate_frame["effective_month"] = pd.to_datetime(
         gate_frame["effective_month"]
     ).dt.to_period("M")
-    state_by_month = gate_frame.set_index("effective_month")[
-        "allow_new_buys"
-    ].astype(bool)
     gate_equity["_month"] = gate_equity["date"].dt.to_period("M")
     gate_equity["_gate_on"] = gate_equity["_month"].map(state_by_month).fillna(False)
     evaluation_months = pd.Index(gate_equity["_month"].unique())
@@ -713,11 +728,11 @@ def run_backtest_dataset(
         ]
         market_gate = build_monthly_trend_gate(completed_index_history)
 
-    scenarios: dict[str, tuple[str, Params | None, float | None, bool]] = {
-        "factor_historical": ("factor_score", params, None, False),
-        "elastic_historical": ("elastic_score", params, None, False),
-        "gbrt_historical": ("gbrt_score", params, None, False),
-        "ensemble_historical": ("ensemble_score", params, None, False),
+    scenarios: dict[str, _BacktestScenario] = {
+        "factor_historical": _BacktestScenario("factor_score", params, None),
+        "elastic_historical": _BacktestScenario("elastic_score", params, None),
+        "gbrt_historical": _BacktestScenario("gbrt_score", params, None),
+        "ensemble_historical": _BacktestScenario("ensemble_score", params, None),
     }
     for score_column in (
         "factor_score",
@@ -726,31 +741,29 @@ def run_backtest_dataset(
         "ensemble_score",
     ):
         label = score_column.removesuffix("_score")
-        scenarios[f"{label}_flat_20bp_roundtrip"] = (
-            score_column,
-            None,
-            20.0,
-            False,
+        scenarios[f"{label}_flat_20bp_roundtrip"] = _BacktestScenario(
+            score_column=score_column,
+            params=None,
+            round_trip_bps=20.0,
         )
     for round_trip_bps in (40, 80):
-        scenarios[f"gbrt_flat_{round_trip_bps}bp_roundtrip"] = (
-            SELECTED_RESEARCH_SCORE_COLUMN,
-            None,
-            float(round_trip_bps),
-            False,
+        scenarios[f"gbrt_flat_{round_trip_bps}bp_roundtrip"] = _BacktestScenario(
+            score_column=SELECTED_RESEARCH_SCORE_COLUMN,
+            params=None,
+            round_trip_bps=float(round_trip_bps),
         )
     if include_market_gate_candidate:
-        scenarios["gbrt_market_gate_historical"] = (
-            SELECTED_RESEARCH_SCORE_COLUMN,
-            params,
-            None,
-            True,
+        scenarios["gbrt_market_gate_historical"] = _BacktestScenario(
+            score_column=SELECTED_RESEARCH_SCORE_COLUMN,
+            params=params,
+            round_trip_bps=None,
+            use_market_gate=True,
         )
-        scenarios["gbrt_market_gate_flat_20bp_roundtrip"] = (
-            SELECTED_RESEARCH_SCORE_COLUMN,
-            None,
-            20.0,
-            True,
+        scenarios["gbrt_market_gate_flat_20bp_roundtrip"] = _BacktestScenario(
+            score_column=SELECTED_RESEARCH_SCORE_COLUMN,
+            params=None,
+            round_trip_bps=20.0,
+            use_market_gate=True,
         )
 
     root = Path(report_root)
@@ -762,28 +775,26 @@ def run_backtest_dataset(
         cost_bps=0.0,
         enable_open_slippage=False,
     )
-    flat_paths: dict[tuple[str, bool], dict[str, Any]] = {}
+    flat_paths: dict[_FlatPathKey, dict[str, Any]] = {}
     scenario_results: dict[str, dict[str, Any]] = {}
-    for name, (
-        score_column,
-        scenario_params,
-        round_trip_bps,
-        use_market_gate,
-    ) in scenarios.items():
+    for name, scenario in scenarios.items():
         scenario_scores = scores.copy()
-        scenario_scores["ensemble_score"] = scenario_scores[score_column]
-        entry_gate = market_gate if use_market_gate else None
-        if round_trip_bps is None:
-            assert scenario_params is not None
+        scenario_scores["ensemble_score"] = scenario_scores[scenario.score_column]
+        entry_gate = market_gate if scenario.use_market_gate else None
+        if scenario.round_trip_bps is None:
+            assert scenario.params is not None
             result = run_portfolio(
                 scenario_scores,
                 bars,
-                params=scenario_params,
+                params=scenario.params,
                 initial_capital=initial_capital,
                 entry_gate=entry_gate,
             )
         else:
-            flat_path_key = (score_column, use_market_gate)
+            flat_path_key = _FlatPathKey(
+                score_column=scenario.score_column,
+                use_market_gate=scenario.use_market_gate,
+            )
             if flat_path_key not in flat_paths:
                 flat_paths[flat_path_key] = run_portfolio(
                     scenario_scores,
@@ -794,7 +805,7 @@ def run_backtest_dataset(
                 )
             result = _apply_flat_cost_stress(
                 flat_paths[flat_path_key],
-                per_side_bps=round_trip_bps / 2.0,
+                per_side_bps=scenario.round_trip_bps / 2.0,
                 initial_capital=initial_capital,
             )
         scenario_results[name] = result

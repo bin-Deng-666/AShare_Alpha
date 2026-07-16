@@ -9,6 +9,7 @@ import pandas as pd
 
 from backtest.costs import apply_slippage, lot_floor, slippage_bps_for_row, trade_fee
 from strategy.rotating.config.params import DEFAULT_PARAMS, Params
+from strategy.rotating.features.market_regime import monthly_gate_state_by_month
 
 
 def run_portfolio(
@@ -41,30 +42,16 @@ def run_portfolio(
     bar_lookup = bar_frame.set_index(["date", "code"], drop=False)
     trading_dates = list(pd.DatetimeIndex(bar_frame["date"].drop_duplicates()).sort_values())
 
-    gate_by_month: dict[pd.Period, bool] | None = None
-    if entry_gate is not None:
-        missing_gate = {"effective_month", "allow_new_buys"}.difference(
-            entry_gate.columns
-        )
-        if missing_gate:
-            raise ValueError(
-                "entry gate missing columns: " + ", ".join(sorted(missing_gate))
-            )
-        gate_frame = entry_gate[["effective_month", "allow_new_buys"]].copy()
-        gate_frame["effective_month"] = pd.to_datetime(
-            gate_frame["effective_month"]
-        ).dt.to_period("M")
-        if gate_frame["effective_month"].duplicated().any():
-            raise ValueError("entry gate contains duplicate effective months")
-        gate_by_month = {
-            month: bool(allowed)
-            for month, allowed in gate_frame.itertuples(index=False, name=None)
-        }
+    gate_by_month = (
+        monthly_gate_state_by_month(entry_gate) if entry_gate is not None else None
+    )
 
     def allows_new_buys(execution_date: pd.Timestamp) -> bool:
         if gate_by_month is None:
             return True
-        return gate_by_month.get(pd.Timestamp(execution_date).to_period("M"), False)
+        return bool(
+            gate_by_month.get(pd.Timestamp(execution_date).to_period("M"), False)
+        )
 
     cash = float(initial_capital)
     positions: dict[str, dict[str, Any]] = {}

@@ -449,7 +449,19 @@ def _model_stability(
     candidate_glob: str,
     start: str,
     end: str,
+    top_fraction: float | None = None,
 ) -> dict[str, Any]:
+    if top_fraction is None:
+        cutoff_sql = "25"
+        overlap_suffix = "top25"
+    else:
+        if not 0.0 < top_fraction <= 1.0:
+            raise ValueError("top_fraction must be in (0, 1]")
+        fraction_sql = format(top_fraction, ".17g")
+        cutoff_sql = (
+            f"greatest(1, cast(ceil(day_rows * {fraction_sql}) as BIGINT))"
+        )
+        overlap_suffix = f"top{round(top_fraction * 100)}pct"
     daily = connection.execute(
         f"""
         WITH joined AS (
@@ -478,6 +490,7 @@ def _model_stability(
                 rank() OVER (PARTITION BY date ORDER BY i_gbrt)
                     + (count(*) OVER (PARTITION BY date, i_gbrt) - 1) / 2.0
                         AS ri_gbrt,
+                count(*) OVER (PARTITION BY date) AS day_rows,
                 row_number() OVER (
                     PARTITION BY date ORDER BY b_elastic DESC, code
                 ) AS top_b_elastic,
@@ -497,10 +510,16 @@ def _model_stability(
             count(*) AS rows,
             corr(rb_elastic, ri_elastic) AS elastic_spearman,
             corr(rb_gbrt, ri_gbrt) AS gbrt_spearman,
-            sum((top_b_elastic <= 25 AND top_i_elastic <= 25)::INTEGER) / 25.0
-                AS elastic_top25_overlap,
-            sum((top_b_gbrt <= 25 AND top_i_gbrt <= 25)::INTEGER) / 25.0
-                AS gbrt_top25_overlap
+            sum((
+                top_b_elastic <= {cutoff_sql}
+                AND top_i_elastic <= {cutoff_sql}
+            )::INTEGER) / max({cutoff_sql})::DOUBLE
+                AS elastic_{overlap_suffix}_overlap,
+            sum((
+                top_b_gbrt <= {cutoff_sql}
+                AND top_i_gbrt <= {cutoff_sql}
+            )::INTEGER) / max({cutoff_sql})::DOUBLE
+                AS gbrt_{overlap_suffix}_overlap
         FROM ranked
         GROUP BY date
         ORDER BY date
@@ -512,19 +531,30 @@ def _model_stability(
         "days": int(len(daily)),
         "models": {},
     }
+    if top_fraction is not None:
+        result["overlap_definition"] = {
+            "daily_top_fraction": top_fraction,
+            "cutoff_rounding": "ceil",
+        }
     for model in ("elastic", "gbrt"):
         spearman = f"{model}_spearman"
-        overlap = f"{model}_top25_overlap"
+        overlap = f"{model}_{overlap_suffix}_overlap"
         quarterly = daily.groupby("quarter", sort=True)[[spearman, overlap]].mean()
         result["models"][model] = {
             "mean_daily_spearman": _finite(daily[spearman].mean()),
             "min_daily_spearman": _finite(daily[spearman].min()),
-            "mean_daily_top25_overlap": _finite(daily[overlap].mean()),
-            "min_daily_top25_overlap": _finite(daily[overlap].min()),
+            f"mean_daily_{overlap_suffix}_overlap": _finite(
+                daily[overlap].mean()
+            ),
+            f"min_daily_{overlap_suffix}_overlap": _finite(
+                daily[overlap].min()
+            ),
             "quarterly": {
                 quarter: {
                     "mean_daily_spearman": _finite(row[spearman]),
-                    "mean_daily_top25_overlap": _finite(row[overlap]),
+                    f"mean_daily_{overlap_suffix}_overlap": _finite(
+                        row[overlap]
+                    ),
                 }
                 for quarter, row in quarterly.iterrows()
             },

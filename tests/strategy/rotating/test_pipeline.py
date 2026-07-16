@@ -13,6 +13,9 @@ from strategy.rotating.experiments import (
 from strategy.rotating.experiments import (
     build_price_limit_diagnostics as price_limit_diagnostics,
 )
+from strategy.rotating.experiments import (
+    build_path_label_diagnostics as path_label_diagnostics,
+)
 
 
 def test_price_limit_diagnostics_compute_daily_spearman_with_ties(tmp_path) -> None:
@@ -38,6 +41,122 @@ def test_price_limit_diagnostics_compute_daily_spearman_with_ties(tmp_path) -> N
 
     connection.close()
     assert result["left"]["right"] == pytest.approx(1.0)
+
+
+def test_path_label_score_identity_separates_model_target_from_economic_target(
+    tmp_path,
+) -> None:
+    panel_root = tmp_path / "panel" / "year=2023"
+    baseline_root = tmp_path / "baseline" / "year=2023"
+    candidate_root = tmp_path / "candidate" / "year=2023"
+    for root in (panel_root, baseline_root, candidate_root):
+        root.mkdir(parents=True)
+    common = pd.DataFrame(
+        {
+            "code": ["000001", "000002"],
+            "date": pd.to_datetime(["2023-01-03", "2023-01-03"]),
+            "target_5": [0.02, -0.01],
+            "target_rank": [1.0, -1.0],
+            "label_available_date": pd.to_datetime(
+                ["2023-01-11", "2023-01-11"]
+            ),
+            "factor_score": [0.3, -0.2],
+            "train_max_label_available_date": pd.to_datetime(
+                ["2023-01-03", "2023-01-03"]
+            ),
+        }
+    )
+    panel = common[["code", "date"]].assign(target_path_rank=[0.5, -0.5])
+    baseline = common.assign(model_target_rank=common["target_rank"])
+    candidate = common.assign(model_target_rank=panel["target_path_rank"])
+    panel.to_parquet(panel_root / "panel.parquet", index=False)
+    baseline.to_parquet(baseline_root / "scores.parquet", index=False)
+    candidate.to_parquet(candidate_root / "scores.parquet", index=False)
+
+    connection = duckdb.connect()
+    result = path_label_diagnostics._label_score_identity(
+        connection,
+        panel_glob=(tmp_path / "panel" / "year=*" / "panel.parquet").as_posix(),
+        baseline_glob=(
+            tmp_path / "baseline" / "year=*" / "scores.parquet"
+        ).as_posix(),
+        candidate_glob=(
+            tmp_path / "candidate" / "year=*" / "scores.parquet"
+        ).as_posix(),
+        start="2023-01-01",
+        end="2023-12-31",
+    )
+    connection.close()
+
+    assert result["baseline_rows"] == result["candidate_rows"] == 2
+    assert result["actual_target_differences"] == 0
+    assert result["endpoint_rank_differences"] == 0
+    assert result["baseline_model_target_mismatches"] == 0
+    assert result["candidate_model_target_mismatches"] == 0
+    assert result["different_model_target_rows"] == 2
+    assert result["baseline_training_label_leaks"] == 0
+    assert result["candidate_training_label_leaks"] == 0
+
+
+def test_path_label_stability_uses_daily_top_quartile_not_top_25_names(
+    tmp_path,
+) -> None:
+    baseline_root = tmp_path / "baseline" / "year=2023"
+    candidate_root = tmp_path / "candidate" / "year=2023"
+    baseline_root.mkdir(parents=True)
+    candidate_root.mkdir(parents=True)
+    codes = [f"{value:06d}" for value in range(120)]
+    baseline_score = list(range(120))
+    candidate_score = baseline_score.copy()
+    for low, high in zip(range(85, 90), range(90, 95), strict=True):
+        candidate_score[low], candidate_score[high] = (
+            candidate_score[high],
+            candidate_score[low],
+        )
+    common = {
+        "code": codes,
+        "date": pd.to_datetime(["2023-01-03"] * 120),
+    }
+    pd.DataFrame(
+        {
+            **common,
+            "elastic_score": baseline_score,
+            "gbrt_score": baseline_score,
+        }
+    ).to_parquet(baseline_root / "scores.parquet", index=False)
+    pd.DataFrame(
+        {
+            **common,
+            "elastic_score": candidate_score,
+            "gbrt_score": candidate_score,
+        }
+    ).to_parquet(candidate_root / "scores.parquet", index=False)
+
+    connection = duckdb.connect()
+    result = industry_diagnostics._model_stability(
+        connection,
+        baseline_glob=(
+            tmp_path / "baseline" / "year=*" / "scores.parquet"
+        ).as_posix(),
+        candidate_glob=(
+            tmp_path / "candidate" / "year=*" / "scores.parquet"
+        ).as_posix(),
+        start="2023-01-01",
+        end="2023-12-31",
+        top_fraction=0.25,
+    )
+    connection.close()
+
+    assert result["overlap_definition"] == {
+        "daily_top_fraction": 0.25,
+        "cutoff_rounding": "ceil",
+    }
+    assert result["models"]["elastic"][
+        "mean_daily_top25pct_overlap"
+    ] == pytest.approx(25 / 30)
+    assert result["models"]["gbrt"][
+        "mean_daily_top25pct_overlap"
+    ] == pytest.approx(25 / 30)
 
 
 def test_price_limit_event_diagnostics_do_not_force_cross_direction_exclusivity(

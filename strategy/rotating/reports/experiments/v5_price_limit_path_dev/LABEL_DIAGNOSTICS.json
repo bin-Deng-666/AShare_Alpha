@@ -1,0 +1,479 @@
+{
+  "experiment": "20260717_price_limit_path_label_race",
+  "start": "2021-01-01",
+  "end": "2023-12-31",
+  "physical_read_cutoff": "2023-12-31",
+  "economic_label": "T+1 open through T+6 open endpoint return",
+  "candidate_training_label": "mean of T+2 through T+6 open returns relative to T+1 open",
+  "panel_fingerprints": [
+    {
+      "path": "strategy/rotating/cache/experiments/v4_price_limit_dev_panel/year=2018/panel.parquet",
+      "size_bytes": 401940587,
+      "sha256": "72ba5d7f6fc504281c23c10e4d5f6409ab51f10654354cceef1611d09060f2ef"
+    },
+    {
+      "path": "strategy/rotating/cache/experiments/v4_price_limit_dev_panel/year=2019/panel.parquet",
+      "size_bytes": 455209049,
+      "sha256": "db016c1361a3414397b8a5070ffe3a54f2afdaad66e876739db91e7cf82c0c18"
+    },
+    {
+      "path": "strategy/rotating/cache/experiments/v4_price_limit_dev_panel/year=2020/panel.parquet",
+      "size_bytes": 512749953,
+      "sha256": "56969d9f7ecf7c7d477534e38b861b57e0327779b04b9eaae6534ef6289fc753"
+    },
+    {
+      "path": "strategy/rotating/cache/experiments/v4_price_limit_dev_panel/year=2021/panel.parquet",
+      "size_bytes": 566131603,
+      "sha256": "f4c2c12858c097067f492115733915200ab39a9b32c70b9192ce9631d325fba8"
+    },
+    {
+      "path": "strategy/rotating/cache/experiments/v4_price_limit_dev_panel/year=2022/panel.parquet",
+      "size_bytes": 636406519,
+      "sha256": "511b9967f17ca449f79a67fb2e4abc6f612f7fc584d34f6c1ad538f5ceb96488"
+    },
+    {
+      "path": "strategy/rotating/cache/experiments/v4_price_limit_dev_panel/year=2023/panel.parquet",
+      "size_bytes": 640513739,
+      "sha256": "d40612c52cac50eee382165ef49a47de19f902fa07fd894eae2db88463ed57a0"
+    }
+  ],
+  "score_specifications": {
+    "baseline": {
+      "feature_columns": [
+        "rank_ret_5",
+        "rank_ret_20",
+        "rank_ret_60",
+        "rank_mom_20_5",
+        "rank_mom_120_20",
+        "rank_reversal_20",
+        "rank_vol_20",
+        "rank_vol_60",
+        "rank_maxret_20",
+        "rank_drawdown_60",
+        "rank_trend_quality_60",
+        "rank_turnover_abnormal_20_250",
+        "rank_turnover_cv_20",
+        "rank_amount_ratio_5_20",
+        "rank_amount_ratio_20_60",
+        "rank_amount_cv_20",
+        "rank_amihud_20",
+        "rank_adv_20",
+        "rank_ep",
+        "rank_bp",
+        "rank_roe",
+        "rank_log_float_market_cap",
+        "rank_overnight_gap_mean_5",
+        "rank_close_location_mean_10",
+        "rank_trend_r2_20",
+        "rank_trend_residual_20",
+        "rank_downside_vol_20",
+        "rank_range_vol_10",
+        "rank_price_volume_corr_20",
+        "rank_turnover_shock_5_20",
+        "ep_missing",
+        "bp_missing",
+        "roe_missing",
+        "board_star",
+        "board_chinext",
+        "limit_up_close_share_5",
+        "limit_up_unsealed_share_5",
+        "limit_down_close_share_5",
+        "limit_down_unsealed_share_5",
+        "limit_history_missing_5"
+      ],
+      "target_column": "target_rank",
+      "min_train_rows": 2000,
+      "train_years": 3,
+      "random_state": 17
+    },
+    "candidate": {
+      "feature_columns": [
+        "rank_ret_5",
+        "rank_ret_20",
+        "rank_ret_60",
+        "rank_mom_20_5",
+        "rank_mom_120_20",
+        "rank_reversal_20",
+        "rank_vol_20",
+        "rank_vol_60",
+        "rank_maxret_20",
+        "rank_drawdown_60",
+        "rank_trend_quality_60",
+        "rank_turnover_abnormal_20_250",
+        "rank_turnover_cv_20",
+        "rank_amount_ratio_5_20",
+        "rank_amount_ratio_20_60",
+        "rank_amount_cv_20",
+        "rank_amihud_20",
+        "rank_adv_20",
+        "rank_ep",
+        "rank_bp",
+        "rank_roe",
+        "rank_log_float_market_cap",
+        "rank_overnight_gap_mean_5",
+        "rank_close_location_mean_10",
+        "rank_trend_r2_20",
+        "rank_trend_residual_20",
+        "rank_downside_vol_20",
+        "rank_range_vol_10",
+        "rank_price_volume_corr_20",
+        "rank_turnover_shock_5_20",
+        "ep_missing",
+        "bp_missing",
+        "roe_missing",
+        "board_star",
+        "board_chinext",
+        "limit_up_close_share_5",
+        "limit_up_unsealed_share_5",
+        "limit_down_close_share_5",
+        "limit_down_unsealed_share_5",
+        "limit_history_missing_5"
+      ],
+      "target_column": "target_path_rank",
+      "min_train_rows": 2000,
+      "train_years": 3,
+      "random_state": 17
+    },
+    "baseline_target_is_endpoint": true,
+    "candidate_target_is_path": true,
+    "non_target_fields_identical": true,
+    "feature_schema_is_frozen_price_limit": true
+  },
+  "identity": {
+    "baseline_rows": 1751687,
+    "candidate_rows": 1751687,
+    "candidate_only_keys": 0,
+    "baseline_only_keys": 0,
+    "actual_target_differences": 0,
+    "endpoint_rank_differences": 0,
+    "label_available_date_differences": 0,
+    "factor_score_differences": 0,
+    "baseline_model_target_mismatches": 0,
+    "candidate_model_target_mismatches": 0,
+    "different_model_target_rows": 1723054,
+    "baseline_training_label_leaks": 0,
+    "candidate_training_label_leaks": 0,
+    "baseline_max_score_date": "2023-12-29 00:00:00",
+    "candidate_max_score_date": "2023-12-29 00:00:00",
+    "baseline_max_label_available_date": "2023-12-29 00:00:00",
+    "candidate_max_label_available_date": "2023-12-29 00:00:00"
+  },
+  "label_coverage": {
+    "eligible_rows": 1751687,
+    "endpoint_target_rows": 1729359,
+    "path_target_rows": 1729359,
+    "target_missingness_differences": 0,
+    "endpoint_path_target_correlation": 0.8841685003115474
+  },
+  "model_stability": {
+    "joined_rows": 1751687,
+    "days": 727,
+    "models": {
+      "elastic": {
+        "mean_daily_spearman": 0.9973115155367472,
+        "min_daily_spearman": 0.992828879045584,
+        "mean_daily_top25pct_overlap": 0.9619487075252952,
+        "min_daily_top25pct_overlap": 0.9302325581395349,
+        "quarterly": {
+          "2021Q1": {
+            "mean_daily_spearman": 0.9966844898481356,
+            "mean_daily_top25pct_overlap": 0.9551525213296164
+          },
+          "2021Q2": {
+            "mean_daily_spearman": 0.997701664534204,
+            "mean_daily_top25pct_overlap": 0.963614241350012
+          },
+          "2021Q3": {
+            "mean_daily_spearman": 0.9973430678076574,
+            "mean_daily_top25pct_overlap": 0.9617592742683149
+          },
+          "2021Q4": {
+            "mean_daily_spearman": 0.9959978301205844,
+            "mean_daily_top25pct_overlap": 0.9525961956761998
+          },
+          "2022Q1": {
+            "mean_daily_spearman": 0.997210859413373,
+            "mean_daily_top25pct_overlap": 0.9586692548325338
+          },
+          "2022Q2": {
+            "mean_daily_spearman": 0.9974176947490772,
+            "mean_daily_top25pct_overlap": 0.9628086364243623
+          },
+          "2022Q3": {
+            "mean_daily_spearman": 0.9975919216972668,
+            "mean_daily_top25pct_overlap": 0.9657150573909777
+          },
+          "2022Q4": {
+            "mean_daily_spearman": 0.997068147523884,
+            "mean_daily_top25pct_overlap": 0.9578374265422548
+          },
+          "2023Q1": {
+            "mean_daily_spearman": 0.997637449636912,
+            "mean_daily_top25pct_overlap": 0.9653261141598003
+          },
+          "2023Q2": {
+            "mean_daily_spearman": 0.997028553304757,
+            "mean_daily_top25pct_overlap": 0.9587122610996137
+          },
+          "2023Q3": {
+            "mean_daily_spearman": 0.9975975433435674,
+            "mean_daily_top25pct_overlap": 0.9677379404270475
+          },
+          "2023Q4": {
+            "mean_daily_spearman": 0.9984145498242027,
+            "mean_daily_top25pct_overlap": 0.9726050863906851
+          }
+        }
+      },
+      "gbrt": {
+        "mean_daily_spearman": 0.9885671115256549,
+        "min_daily_spearman": 0.9788544315391684,
+        "mean_daily_top25pct_overlap": 0.9233036940992865,
+        "min_daily_top25pct_overlap": 0.8663697104677061,
+        "quarterly": {
+          "2021Q1": {
+            "mean_daily_spearman": 0.9821166166059443,
+            "mean_daily_top25pct_overlap": 0.8940039030003357
+          },
+          "2021Q2": {
+            "mean_daily_spearman": 0.9850314494932654,
+            "mean_daily_top25pct_overlap": 0.9046708583385688
+          },
+          "2021Q3": {
+            "mean_daily_spearman": 0.9856836835526213,
+            "mean_daily_top25pct_overlap": 0.9130140944757505
+          },
+          "2021Q4": {
+            "mean_daily_spearman": 0.9839028530330168,
+            "mean_daily_top25pct_overlap": 0.9011632198455813
+          },
+          "2022Q1": {
+            "mean_daily_spearman": 0.9897640461274877,
+            "mean_daily_top25pct_overlap": 0.9237059807185892
+          },
+          "2022Q2": {
+            "mean_daily_spearman": 0.9892853284599641,
+            "mean_daily_top25pct_overlap": 0.9296324981793487
+          },
+          "2022Q3": {
+            "mean_daily_spearman": 0.9879598514744078,
+            "mean_daily_top25pct_overlap": 0.9224631684028801
+          },
+          "2022Q4": {
+            "mean_daily_spearman": 0.9911281137787018,
+            "mean_daily_top25pct_overlap": 0.932933125153059
+          },
+          "2023Q1": {
+            "mean_daily_spearman": 0.9900650571329848,
+            "mean_daily_top25pct_overlap": 0.9270078863717526
+          },
+          "2023Q2": {
+            "mean_daily_spearman": 0.9911645538495353,
+            "mean_daily_top25pct_overlap": 0.9294395154005782
+          },
+          "2023Q3": {
+            "mean_daily_spearman": 0.9917757573804216,
+            "mean_daily_top25pct_overlap": 0.9450248952038817
+          },
+          "2023Q4": {
+            "mean_daily_spearman": 0.9949397969437025,
+            "mean_daily_top25pct_overlap": 0.9555683591928782
+          }
+        }
+      }
+    },
+    "overlap_definition": {
+      "daily_top_fraction": 0.25,
+      "cutoff_rounding": "ceil"
+    }
+  },
+  "portfolio_action_execution_audit": {
+    "endpoint": {
+      "gbrt_historical": {
+        "annual_returns": {
+          "2021": 0.0013191131316183657,
+          "2022": -0.13239192019906065,
+          "2023": 0.043702538497008225
+        },
+        "end_pending_orders": 0,
+        "end_pending_requested_amount": 0.0,
+        "order_attempts": 961,
+        "deferred_order_attempts": 12,
+        "max_positions": 25,
+        "max_buy_adv_fraction": 0.0008997871783464985,
+        "largest_industry_abs_pnl_fraction": 0.05426316538940262,
+        "microcap_abs_pnl_fraction": 0.2807465295246528,
+        "corporate_action_events": 80,
+        "corporate_action_prior_shares": 311800.0,
+        "corporate_action_new_shares": 312930.0,
+        "corporate_action_credited_shares": 1130.0,
+        "corporate_action_share_distribution_events": 7,
+        "corporate_action_unresolved_holder_entitlement_events": 0,
+        "corporate_action_reference_mismatch_events": 8,
+        "corporate_action_reference_mismatch_entitlements_credited": 8,
+        "corporate_action_execution_policy_counts": {
+          "cash_and_share_credit": 72,
+          "known_entitlements_credit_event_day_orders_blocked": 8
+        },
+        "corporate_action_dividend_cash": 75257.99152,
+        "corporate_action_dividend_tax": 18814.49788,
+        "dsr_evaluated": false
+      },
+      "gbrt_flat_20bp_roundtrip": {
+        "annual_returns": {
+          "2021": 0.0015007737000019006,
+          "2022": -0.15793357831931065,
+          "2023": 0.03005626599987754
+        },
+        "end_pending_orders": 0,
+        "end_pending_requested_amount": 0.0,
+        "order_attempts": 924,
+        "deferred_order_attempts": 12,
+        "max_positions": 25,
+        "max_buy_adv_fraction": 0.0009108734672571946,
+        "largest_industry_abs_pnl_fraction": 0.05587112393692635,
+        "microcap_abs_pnl_fraction": 0.27612905073502164,
+        "corporate_action_events": 80,
+        "corporate_action_prior_shares": 290200.0,
+        "corporate_action_new_shares": 291360.0,
+        "corporate_action_credited_shares": 1160.0,
+        "corporate_action_share_distribution_events": 7,
+        "corporate_action_unresolved_holder_entitlement_events": 0,
+        "corporate_action_reference_mismatch_events": 8,
+        "corporate_action_reference_mismatch_entitlements_credited": 8,
+        "corporate_action_execution_policy_counts": {
+          "cash_and_share_credit": 72,
+          "known_entitlements_credit_event_day_orders_blocked": 8
+        },
+        "corporate_action_dividend_cash": 74890.10512000001,
+        "corporate_action_dividend_tax": 18722.526280000002,
+        "dsr_evaluated": false
+      }
+    },
+    "path": {
+      "gbrt_historical": {
+        "annual_returns": {
+          "2021": -0.00667675238151888,
+          "2022": -0.10389566189165889,
+          "2023": 0.025176383954305992
+        },
+        "end_pending_orders": 0,
+        "end_pending_requested_amount": 0.0,
+        "order_attempts": 1071,
+        "deferred_order_attempts": 4,
+        "max_positions": 25,
+        "max_buy_adv_fraction": 0.0008525861354466783,
+        "largest_industry_abs_pnl_fraction": 0.0363964922842654,
+        "microcap_abs_pnl_fraction": 0.2898302194006973,
+        "corporate_action_events": 70,
+        "corporate_action_prior_shares": 289400.0,
+        "corporate_action_new_shares": 290470.0,
+        "corporate_action_credited_shares": 1070.0,
+        "corporate_action_share_distribution_events": 6,
+        "corporate_action_unresolved_holder_entitlement_events": 0,
+        "corporate_action_reference_mismatch_events": 7,
+        "corporate_action_reference_mismatch_entitlements_credited": 7,
+        "corporate_action_execution_policy_counts": {
+          "cash_and_share_credit": 63,
+          "known_entitlements_credit_event_day_orders_blocked": 7
+        },
+        "corporate_action_dividend_cash": 58759.992320000005,
+        "corporate_action_dividend_tax": 14689.998080000001,
+        "dsr_evaluated": false
+      },
+      "gbrt_flat_20bp_roundtrip": {
+        "annual_returns": {
+          "2021": -0.006181505900001105,
+          "2022": -0.053427640096477824,
+          "2023": 0.010346259078549691
+        },
+        "end_pending_orders": 0,
+        "end_pending_requested_amount": 0.0,
+        "order_attempts": 1071,
+        "deferred_order_attempts": 4,
+        "max_positions": 25,
+        "max_buy_adv_fraction": 0.0008629414326383384,
+        "largest_industry_abs_pnl_fraction": 0.0333496281208635,
+        "microcap_abs_pnl_fraction": 0.2934314748327959,
+        "corporate_action_events": 72,
+        "corporate_action_prior_shares": 289500.0,
+        "corporate_action_new_shares": 290600.0,
+        "corporate_action_credited_shares": 1100.0,
+        "corporate_action_share_distribution_events": 6,
+        "corporate_action_unresolved_holder_entitlement_events": 0,
+        "corporate_action_reference_mismatch_events": 8,
+        "corporate_action_reference_mismatch_entitlements_credited": 8,
+        "corporate_action_execution_policy_counts": {
+          "cash_and_share_credit": 64,
+          "known_entitlements_credit_event_day_orders_blocked": 8
+        },
+        "corporate_action_dividend_cash": 64343.573576,
+        "corporate_action_dividend_tax": 16085.893394,
+        "dsr_evaluated": false
+      }
+    }
+  },
+  "frozen_price_limit_data_gate_summary": {
+    "full_period_coverage_at_least_99_5pct": true,
+    "each_year_coverage_at_least_99pct": true,
+    "each_event_has_zero_and_nonzero_each_year": true,
+    "valid_limits_within_raw_ohlc": true,
+    "close_flags_imply_touch": true,
+    "labels_do_not_cross_cutoff": true,
+    "unsupported_action_labels_are_invalidated": true,
+    "rights_issue_price_capability_is_used_for_limits": true,
+    "candidate_preserves_all_baseline_fields": true,
+    "score_keys_targets_and_factor_are_identical": true,
+    "corporate_action_files_cover_panel": true,
+    "corporate_action_event_fetch_completed_without_failures": true,
+    "all_missing_reference_prices_were_conservatively_invalidated": true,
+    "corporate_action_reference_was_exercised": true,
+    "qfq_rebuild_completed_without_failures": true,
+    "qfq_rebuild_exercised_company_actions": true,
+    "qfq_used_complete_event_layer": true,
+    "qfq_physical_cutoff_matches_public_boundary": true,
+    "qfq_universe_is_frozen_at_public_boundary": true,
+    "qfq_event_ratios_are_finite_positive_and_ordered": true,
+    "qfq_continuity_identity_holds": true,
+    "portfolio_company_action_share_credits_are_audited": true,
+    "portfolio_holder_entitlements_are_complete": true,
+    "reference_mismatch_entitlements_are_credited": true
+  },
+  "data_gates": {
+    "same_score_rows_and_keys": true,
+    "economic_targets_dates_and_factor_are_identical": true,
+    "model_targets_match_their_registered_labels": true,
+    "training_labels_are_available_before_prediction": true,
+    "score_and_label_dates_respect_public_cutoff": true,
+    "endpoint_and_path_use_the_same_complete_samples": true,
+    "score_specifications_differ_only_by_registered_target": true,
+    "frozen_price_limit_data_gates_remain_passed": true,
+    "portfolio_holder_entitlements_are_complete": true,
+    "reference_mismatch_entitlements_are_credited": true
+  },
+  "gate_evaluation": {
+    "gates": {
+      "full_period_return_and_sharpe_better": true,
+      "complete_three_year_coverage": true,
+      "at_least_two_yearly_double_wins": false,
+      "flat_20bp_return_and_sharpe_better": true,
+      "drawdown_not_more_than_2pp_worse": true,
+      "turnover_not_more_than_25pct_higher": true,
+      "rank_ic_within_tolerance": true,
+      "complete_five_cohort_coverage": true,
+      "all_five_candidate_cohorts_positive": true,
+      "paired_daily_difference_positive": true
+    },
+    "yearly_double_wins": 1,
+    "paired_daily_return_difference": {
+      "days": 727,
+      "mean_daily_difference": 1.1223774512697428e-05,
+      "annualized_mean_difference": 0.0027161534320727775,
+      "hac_lags": 4,
+      "hac_standard_error": 0.0001132961781840057,
+      "hac_t_stat": 0.09906578220554589
+    },
+    "all_gates_passed": false,
+    "experiment_decision": "rejected_on_development"
+  }
+}

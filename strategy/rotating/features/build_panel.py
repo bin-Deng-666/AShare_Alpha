@@ -71,6 +71,9 @@ CANDIDATE_MODEL_INPUT_FEATURES = tuple(
     f"rank_{feature}" for feature in MODEL_FEATURES
 ) + CONTROL_FEATURES
 MODEL_INPUT_FEATURES = CANDIDATE_MODEL_INPUT_FEATURES
+ENDPOINT_TARGET_COLUMN = "target_rank"
+PATH_TARGET_COLUMN = "target_path_rank"
+MODEL_TARGET_COLUMN = PATH_TARGET_COLUMN
 
 
 def build_factor_panel(
@@ -148,8 +151,8 @@ def build_factor_panel(
     frame["overnight_1"] = frame["open"] / previous_close - 1.0
     frame["range_1"] = (frame["high"] - frame["low"]) / previous_close
     frame["close_location_1"] = (frame["close"] - frame["low"]) / (
-        frame["high"] - frame["low"]
-    ).replace(0.0, np.nan)
+        frame["high"] - frame["low"] + 1e-12
+    )
     frame["ret_5"] = frame["close"] / by_code["close"].shift(5) - 1.0
     frame["ret_20"] = frame["close"] / by_code["close"].shift(20) - 1.0
     frame["ret_60"] = frame["close"] / by_code["close"].shift(60) - 1.0
@@ -170,14 +173,14 @@ def build_factor_panel(
     frame["downside_vol_20"] = returns_by_code.transform(
         lambda values: values.clip(upper=0.0)
         .pow(2.0)
-        .rolling(20, min_periods=15)
+        .rolling(20, min_periods=20)
         .mean()
         .pow(0.5)
     )
     frame["overnight_gap_mean_5"] = rolling_mean(frame["overnight_1"], 5, 5)
-    frame["range_vol_10"] = rolling_mean(frame["range_1"], 10, 8)
+    frame["range_vol_10"] = rolling_mean(frame["range_1"], 10, 10)
     frame["close_location_mean_10"] = rolling_mean(
-        frame["close_location_1"], 10, 8
+        frame["close_location_1"], 10, 10
     )
     trend_time = frame["history_count"].astype(float)
     trend_price = frame["close"].astype(float)
@@ -187,7 +190,7 @@ def build_factor_panel(
         trend_covariance,
         trend_time_variance,
         trend_price_variance,
-    ) = rolling_pair_moments(trend_time, trend_price, 20, 15)
+    ) = rolling_pair_moments(trend_time, trend_price, 20, 20)
     trend_slope = trend_covariance / trend_time_variance.replace(0.0, np.nan)
     trend_fitted = trend_price_mean + trend_slope * (trend_time - trend_time_mean)
     frame["trend_residual_20"] = (
@@ -204,7 +207,7 @@ def build_factor_panel(
         frame["code"], sort=False
     ).diff()
     _, _, price_volume_covariance, return_variance, amount_change_variance = (
-        rolling_pair_moments(frame["ret_1"], log_amount_change, 20, 15)
+        rolling_pair_moments(frame["ret_1"], log_amount_change, 20, 20)
     )
     frame["price_volume_corr_20"] = price_volume_covariance / np.sqrt(
         return_variance.clip(lower=0.0)
@@ -230,10 +233,13 @@ def build_factor_panel(
     turnover_mean_5 = by_code["turnover_pct"].transform(
         lambda values: values.rolling(5, min_periods=5).mean()
     )
+    turnover_mean_20_complete = by_code["turnover_pct"].transform(
+        lambda values: values.rolling(20, min_periods=20).mean()
+    )
     frame["turnover_abnormal_20_250"] = turnover_mean_20 / turnover_mean_250 - 1.0
     frame["turnover_cv_20"] = turnover_std_20 / turnover_mean_20.replace(0.0, np.nan)
     frame["turnover_shock_5_20"] = (
-        turnover_mean_5 / turnover_mean_20.replace(0.0, np.nan) - 1.0
+        turnover_mean_5 / turnover_mean_20_complete.replace(0.0, np.nan) - 1.0
     )
 
     frame["amount_mean_5"] = by_code["amount"].transform(
@@ -321,12 +327,45 @@ def build_factor_panel(
     frame["_entry_date"] = frame["date"].map(entry_date_map)
     frame["_exit_date"] = frame["date"].map(exit_date_map)
     open_lookup = frame.set_index(["code", "date"])["open"]
+    limit_up = pd.to_numeric(
+        frame["limit_up"]
+        if "limit_up" in frame
+        else pd.Series(np.nan, index=frame.index),
+        errors="coerce",
+    )
+    limit_down = pd.to_numeric(
+        frame["limit_down"]
+        if "limit_down" in frame
+        else pd.Series(np.nan, index=frame.index),
+        errors="coerce",
+    )
+    open_is_limit_up = pd.Series(
+        np.isclose(frame["open"], limit_up, equal_nan=False), index=frame.index
+    )
+    open_is_limit_down = pd.Series(
+        np.isclose(frame["open"], limit_down, equal_nan=False), index=frame.index
+    )
+    trade_status = frame["trade_status"].fillna(False).astype(bool)
+    frame["_can_buy_open"] = (
+        trade_status & frame["open"].notna() & ~open_is_limit_up
+    )
+    frame["_can_sell_open"] = (
+        trade_status & frame["open"].notna() & ~open_is_limit_down
+    )
+    can_buy_lookup = frame.set_index(["code", "date"])["_can_buy_open"]
+    can_sell_lookup = frame.set_index(["code", "date"])["_can_sell_open"]
     entry_keys = pd.MultiIndex.from_arrays([frame["code"], frame["_entry_date"]])
     exit_keys = pd.MultiIndex.from_arrays([frame["code"], frame["_exit_date"]])
     frame["entry_open"] = open_lookup.reindex(entry_keys).to_numpy()
     frame["exit_open_5"] = open_lookup.reindex(exit_keys).to_numpy()
-    frame["target_5"] = frame["exit_open_5"] / frame["entry_open"] - 1.0
+    entry_executable = (
+        can_buy_lookup.reindex(entry_keys)
+        .astype("boolean")
+        .fillna(False)
+        .to_numpy(dtype=bool)
+    )
     path_opens = []
+    path_executable = []
     for offset in range(2, 7):
         path_date_map = {
             market_dates[index]: market_dates[index + offset]
@@ -335,15 +374,40 @@ def build_factor_panel(
         path_dates = frame["date"].map(path_date_map)
         path_keys = pd.MultiIndex.from_arrays([frame["code"], path_dates])
         path_opens.append(open_lookup.reindex(path_keys).to_numpy(dtype=float))
+        path_executable.append(
+            can_sell_lookup.reindex(path_keys)
+            .astype("boolean")
+            .fillna(False)
+            .to_numpy(dtype=bool)
+        )
     path_open_frame = pd.DataFrame(np.column_stack(path_opens), index=frame.index)
-    complete_path = path_open_frame.notna().all(axis=1)
+    path_execution_frame = pd.DataFrame(
+        np.column_stack(path_executable), index=frame.index
+    )
+    complete_path = (
+        path_open_frame.notna().all(axis=1)
+        & path_execution_frame.all(axis=1)
+        & entry_executable
+    )
+    frame["target_5"] = (
+        frame["exit_open_5"] / frame["entry_open"] - 1.0
+    ).where(complete_path)
     frame["path_open_mean_5"] = path_open_frame.mean(axis=1).where(complete_path)
     frame["target_path_5"] = frame["path_open_mean_5"] / frame["entry_open"] - 1.0
     frame["label_available_date"] = frame["_exit_date"]
-    frame = frame.drop(columns=["_entry_date", "_exit_date", "_market_session"])
+    frame = frame.drop(
+        columns=[
+            "_entry_date",
+            "_exit_date",
+            "_market_session",
+            "_can_buy_open",
+            "_can_sell_open",
+        ]
+    )
     if "industry" not in frame:
         frame["industry"] = "UNKNOWN"
     frame["industry"] = frame["industry"].fillna("UNKNOWN").astype(str)
+
     def add_neutralized_target(
         target_column: str, residual_column: str, rank_column: str
     ) -> None:

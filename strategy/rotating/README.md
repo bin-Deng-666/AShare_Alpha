@@ -2,7 +2,7 @@
 
 日频横截面轮动策略：固定因子、Elastic Net 与浅层 GBRT 三方赛马，五日分片持有，T+1 开盘执行。
 
-当前状态：三个公共 seam 已按 TDD 实现；正式全市场赛马选择浅层 GBRT 作为默认研究信号。v0.2 的标签是 `T+1 open -> T+6 open` 五日区间涨幅，而不是下一日涨幅，并在开发期采纳八项日线增强特征。流水线按年构建 PIT 面板、按季度冻结模型，并使用 T+1 开盘与历史时变成本回测。
+当前状态：三个公共 seam 已按 TDD 实现；正式全市场赛马选择浅层 GBRT 作为默认研究信号。v0.2 使用 `T+2 ... T+6` 五个开盘相对 `T+1 open` 的路径收益均值标签，而不是下一日或单一退出日涨幅，并使用八项日线增强特征。流水线按年构建 PIT 面板、按季度冻结模型，并使用 T+1 开盘与历史时变成本回测。
 
 ```powershell
 # 首次按 data/README.md 构建最小 PIT 数据：
@@ -28,6 +28,16 @@ tar -xzf data\raw\simtradelab\simtradelab-data-cn-2026-05-26.tar.gz `
 # 自动补三年训练面板，生成日度分数和全区间报告：
 .venv\Scripts\python.exe -m strategy.rotating.cli.run_pipeline all `
   --start 2021-01-01 --end 2026-05-22
+
+# 严格复现开发期标签赛马（物理禁止读取 2024 行情）：
+.venv\Scripts\python.exe -m strategy.rotating.cli.run_pipeline build-panel `
+  --start 2018-01-01 --end 2023-12-31 --data-cutoff 2023-12-31 `
+  --panel-root strategy\rotating\cache\experiments\v2_dev_panel
+.venv\Scripts\python.exe -m strategy.rotating.cli.run_pipeline score `
+  --start 2021-01-01 --end 2023-12-31 --feature-set enhanced `
+  --target-column target_path_rank `
+  --panel-root strategy\rotating\cache\experiments\v2_dev_panel `
+  --score-root strategy\rotating\cache\experiments\v2_path_scores
 
 # 分别保存开发期与封存期报告：
 .venv\Scripts\python.exe -m strategy.rotating.cli.run_pipeline backtest `

@@ -7,12 +7,17 @@ from dataclasses import asdict, replace
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from backtest.metrics import compute_metrics
 from strategy.rotating.config.params import DEFAULT_PARAMS, Params
 from strategy.rotating.engine.portfolio import run_portfolio
-from strategy.rotating.features.build_panel import MODEL_INPUT_FEATURES, build_factor_panel
+from strategy.rotating.features.build_panel import (
+    MODEL_INPUT_FEATURES,
+    MODEL_TARGET_COLUMN,
+    build_factor_panel,
+)
 from strategy.rotating.lib.data import (
     load_execution_bars,
     load_index_bars,
@@ -27,6 +32,7 @@ PANEL_ROOT = CACHE_ROOT / "panel"
 SCORE_ROOT = CACHE_ROOT / "scores"
 REPORT_ROOT = STRATEGY_ROOT / "reports"
 SELECTED_RESEARCH_SCORE_COLUMN = "gbrt_score"
+SCORE_SPEC_FILENAME = "_SCORE_SPEC.json"
 
 
 def _atomic_parquet(frame: pd.DataFrame, path: Path) -> None:
@@ -41,17 +47,23 @@ def build_panel_dataset(
     end: str,
     *,
     output_root: str | Path = PANEL_ROOT,
+    data_cutoff: str | None = None,
 ) -> list[Path]:
     """Build year partitions with sufficient pre-history and future label bars."""
     first = pd.Timestamp(start).normalize()
     last = pd.Timestamp(end).normalize()
+    cutoff = pd.Timestamp(data_cutoff).normalize() if data_cutoff else None
+    if cutoff is not None and last > cutoff:
+        raise ValueError("panel end cannot be later than data_cutoff")
     root = Path(output_root)
     outputs: list[Path] = []
     for year in range(first.year, last.year + 1):
         partition_start = max(first, pd.Timestamp(year=year, month=1, day=1))
         partition_end = min(last, pd.Timestamp(year=year, month=12, day=31))
-        load_start = partition_start - pd.Timedelta(days=450)
-        load_end = partition_end + pd.Timedelta(days=30)
+        load_start = partition_start - pd.DateOffset(days=450)
+        load_end = partition_end + pd.DateOffset(days=30)
+        if cutoff is not None:
+            load_end = min(load_end, cutoff)
         source = load_point_in_time_source(load_start, load_end)
         panel = build_factor_panel(
             str(partition_start.date()),
@@ -74,7 +86,7 @@ def score_panel_dataset(
     train_years: int = 3,
     random_state: int = 17,
     feature_columns: tuple[str, ...] = MODEL_INPUT_FEATURES,
-    target_column: str = "target_rank",
+    target_column: str = MODEL_TARGET_COLUMN,
 ) -> list[Path]:
     """Create leakage-safe daily scores, fitting each model once per quarter."""
     first = pd.Timestamp(start).normalize()
@@ -160,6 +172,21 @@ def score_panel_dataset(
         output = score_path / f"year={year}" / "scores.parquet"
         _atomic_parquet(scores, output)
         outputs.append(output)
+    score_path.mkdir(parents=True, exist_ok=True)
+    (score_path / SCORE_SPEC_FILENAME).write_text(
+        json.dumps(
+            {
+                "feature_columns": list(feature_columns),
+                "target_column": target_column,
+                "min_train_rows": int(min_train_rows),
+                "train_years": int(train_years),
+                "random_state": int(random_state),
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
     return outputs
 
 
@@ -173,6 +200,19 @@ def _json_ready(value: Any) -> Any:
     if pd.isna(value):
         return None
     return value
+
+
+def _load_score_specification(score_root: str | Path) -> dict[str, Any] | None:
+    root = Path(score_root)
+    if not root.is_dir():
+        return None
+    path = root / SCORE_SPEC_FILENAME
+    if not path.exists():
+        return None
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"score specification at {path} must be a JSON object")
+    return payload
 
 
 def _apply_flat_cost_stress(
@@ -229,6 +269,47 @@ def _apply_flat_cost_stress(
     return stressed
 
 
+def _rank_ic_summary(
+    values: pd.Series, *, hac_lags: int = 4
+) -> dict[str, Any]:
+    series = pd.Series(values, dtype=float).dropna().reset_index(drop=True)
+    standard_deviation = series.std()
+    hac_standard_error = None
+    hac_t_stat = None
+    if len(series) > 1:
+        centered = series.to_numpy(dtype=float) - float(series.mean())
+        gamma_zero = float(np.dot(centered, centered) / len(centered))
+        long_run_variance = gamma_zero
+        effective_lags = min(int(hac_lags), len(centered) - 1)
+        for lag in range(1, effective_lags + 1):
+            covariance = float(
+                np.dot(centered[lag:], centered[:-lag]) / len(centered)
+            )
+            weight = 1.0 - lag / (hac_lags + 1.0)
+            long_run_variance += 2.0 * weight * covariance
+        hac_standard_error = float(
+            np.sqrt(max(long_run_variance, 0.0) / len(centered))
+        )
+        if hac_standard_error > 0.0:
+            hac_t_stat = float(series.mean() / hac_standard_error)
+    return {
+        "days": int(len(series)),
+        "rank_ic_mean": float(series.mean()) if len(series) else None,
+        "rank_ic_std": float(standard_deviation) if len(series) > 1 else None,
+        "rank_icir_annualized": (
+            float(series.mean() / standard_deviation * (242.0**0.5))
+            if len(series) > 1 and standard_deviation > 0.0
+            else None
+        ),
+        "positive_day_fraction": (
+            float(series.gt(0.0).mean()) if len(series) else None
+        ),
+        "rank_ic_hac_lags": int(hac_lags),
+        "rank_ic_hac_standard_error": hac_standard_error,
+        "rank_ic_hac_t_stat": hac_t_stat,
+    }
+
+
 def _score_diagnostics(
     scores: pd.DataFrame,
     *,
@@ -245,33 +326,55 @@ def _score_diagnostics(
         scores[target_column].notna()
         & available.le(pd.Timestamp(evaluation_end).normalize())
     ]
+    ordered_dates = sorted(pd.to_datetime(realized["date"]).dt.normalize().unique())
+    cohort_by_date = {
+        pd.Timestamp(date): int(index % 5)
+        for index, date in enumerate(ordered_dates)
+    }
     for score_column in (
         "factor_score",
         "elastic_score",
         "gbrt_score",
         "ensemble_score",
     ):
-        daily_ic = []
-        for _, cross_section in realized.groupby("date", sort=True):
+        daily_ic: list[dict[str, Any]] = []
+        for date, cross_section in realized.groupby("date", sort=True):
             if len(cross_section) < 5:
                 continue
             ic = cross_section[score_column].corr(
                 cross_section[target_column], method="spearman"
             )
             if pd.notna(ic):
-                daily_ic.append(float(ic))
-        series = pd.Series(daily_ic, dtype=float)
-        diagnostics[score_column] = {
-            "days": int(len(series)),
-            "rank_ic_mean": float(series.mean()) if len(series) else None,
-            "rank_ic_std": float(series.std()) if len(series) > 1 else None,
-            "rank_icir_annualized": (
-                float(series.mean() / series.std() * (242.0**0.5))
-                if len(series) > 1 and series.std() > 0.0
-                else None
-            ),
-            "positive_day_fraction": float(series.gt(0.0).mean()) if len(series) else None,
-        }
+                normalized_date = pd.Timestamp(date).normalize()
+                daily_ic.append(
+                    {
+                        "date": normalized_date,
+                        "rank_ic": float(ic),
+                        "year": int(normalized_date.year),
+                        "cohort": cohort_by_date[normalized_date],
+                    }
+                )
+        daily_frame = pd.DataFrame(daily_ic)
+        summary = _rank_ic_summary(
+            daily_frame["rank_ic"] if not daily_frame.empty else pd.Series(dtype=float)
+        )
+        summary["rank_ic_by_year"] = (
+            {
+                str(year): _rank_ic_summary(group["rank_ic"])
+                for year, group in daily_frame.groupby("year", sort=True)
+            }
+            if not daily_frame.empty
+            else {}
+        )
+        summary["rank_ic_by_cohort"] = (
+            {
+                str(cohort): _rank_ic_summary(group["rank_ic"])
+                for cohort, group in daily_frame.groupby("cohort", sort=True)
+            }
+            if not daily_frame.empty
+            else {}
+        )
+        diagnostics[score_column] = summary
     return diagnostics
 
 
@@ -322,6 +425,53 @@ def _admission_diagnostics(result: dict[str, Any]) -> dict[str, Any]:
         "microcap_abs_pnl_fraction": microcap_pnl_fraction,
         "dsr_evaluated": False,
     }
+
+
+def _append_score_diagnostics_markdown(
+    markdown: list[str],
+    *,
+    title: str,
+    diagnostics: dict[str, Any],
+) -> None:
+    if not diagnostics:
+        return
+    markdown.extend(
+        [
+            "",
+            f"## {title}",
+            "",
+            "| 分数 | 日数 | 平均 Rank IC | 年化 ICIR | HAC(4) t | 正 IC 日占比 |",
+            "|---|---:|---:|---:|---:|---:|",
+        ]
+    )
+    for name, diagnostic in diagnostics.items():
+        markdown.append(
+            "| {name} | {days} | {mean:.4f} | {icir:.2f} | {hac:.2f} | "
+            "{positive:.1%} |".format(
+                name=name,
+                days=diagnostic["days"],
+                mean=(
+                    diagnostic["rank_ic_mean"]
+                    if diagnostic["rank_ic_mean"] is not None
+                    else float("nan")
+                ),
+                icir=(
+                    diagnostic["rank_icir_annualized"]
+                    if diagnostic["rank_icir_annualized"] is not None
+                    else float("nan")
+                ),
+                hac=(
+                    diagnostic["rank_ic_hac_t_stat"]
+                    if diagnostic["rank_ic_hac_t_stat"] is not None
+                    else float("nan")
+                ),
+                positive=(
+                    diagnostic["positive_day_fraction"]
+                    if diagnostic["positive_day_fraction"] is not None
+                    else float("nan")
+                ),
+            )
+        )
 
 
 def run_backtest_dataset(
@@ -429,6 +579,7 @@ def run_backtest_dataset(
         "selected_research_score_column": SELECTED_RESEARCH_SCORE_COLUMN,
         "admission_status": "research_only_forward_validation_required",
         "params": asdict(params),
+        "score_specification": _load_score_specification(score_root),
         "score_diagnostics": _score_diagnostics(scores, evaluation_end=last),
         "model_target_diagnostics": _score_diagnostics(
             scores,
@@ -462,70 +613,16 @@ def run_backtest_dataset(
                 turnover=float(trading.get("turnover_ann", float("nan"))),
             )
         )
-    markdown.extend(
-        [
-            "",
-            "## Rank IC",
-            "",
-            "| 分数 | 日数 | 平均 Rank IC | 年化 ICIR | 正 IC 日占比 |",
-            "|---|---:|---:|---:|---:|",
-        ]
+    _append_score_diagnostics_markdown(
+        markdown,
+        title="Rank IC",
+        diagnostics=payload["score_diagnostics"],
     )
-    for name, diagnostic in payload["score_diagnostics"].items():
-        markdown.append(
-            "| {name} | {days} | {mean:.4f} | {icir:.2f} | {positive:.1%} |".format(
-                name=name,
-                days=diagnostic["days"],
-                mean=(
-                    diagnostic["rank_ic_mean"]
-                    if diagnostic["rank_ic_mean"] is not None
-                    else float("nan")
-                ),
-                icir=(
-                    diagnostic["rank_icir_annualized"]
-                    if diagnostic["rank_icir_annualized"] is not None
-                    else float("nan")
-                ),
-                positive=(
-                    diagnostic["positive_day_fraction"]
-                    if diagnostic["positive_day_fraction"] is not None
-                    else float("nan")
-                ),
-            )
-        )
-    if payload["model_target_diagnostics"]:
-        markdown.extend(
-            [
-                "",
-                "## 模型训练标签 Rank IC",
-                "",
-                "| 分数 | 日数 | 平均 Rank IC | 年化 ICIR | 正 IC 日占比 |",
-                "|---|---:|---:|---:|---:|",
-            ]
-        )
-        for name, diagnostic in payload["model_target_diagnostics"].items():
-            markdown.append(
-                "| {name} | {days} | {mean:.4f} | {icir:.2f} | "
-                "{positive:.1%} |".format(
-                    name=name,
-                    days=diagnostic["days"],
-                    mean=(
-                        diagnostic["rank_ic_mean"]
-                        if diagnostic["rank_ic_mean"] is not None
-                        else float("nan")
-                    ),
-                    icir=(
-                        diagnostic["rank_icir_annualized"]
-                        if diagnostic["rank_icir_annualized"] is not None
-                        else float("nan")
-                    ),
-                    positive=(
-                        diagnostic["positive_day_fraction"]
-                        if diagnostic["positive_day_fraction"] is not None
-                        else float("nan")
-                    ),
-                )
-            )
+    _append_score_diagnostics_markdown(
+        markdown,
+        title="模型训练标签 Rank IC",
+        diagnostics=payload["model_target_diagnostics"],
+    )
     markdown.extend(
         [
             "",

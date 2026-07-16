@@ -5,33 +5,33 @@
 | 场景 | 年化收益 | Sharpe | 最大回撤 | 年化换手 |
 |---|---:|---:|---:|---:|
 | factor_historical | 7.32% | 0.52 | -16.96% | 5.01 |
-| elastic_historical | 7.45% | 0.41 | -18.12% | 11.23 |
-| gbrt_historical | 10.84% | 0.78 | -11.40% | 1.41 |
-| ensemble_historical | 4.66% | 0.34 | -16.42% | 4.28 |
+| elastic_historical | 12.79% | 0.72 | -16.66% | 11.67 |
+| gbrt_historical | 11.74% | 0.91 | -7.45% | 1.79 |
+| ensemble_historical | 5.53% | 0.39 | -16.14% | 4.05 |
 | factor_flat_20bp_roundtrip | 8.03% | 0.57 | -17.00% | 5.19 |
-| elastic_flat_20bp_roundtrip | 7.75% | 0.42 | -18.14% | 11.37 |
-| gbrt_flat_20bp_roundtrip | 10.53% | 0.78 | -10.87% | 1.38 |
-| ensemble_flat_20bp_roundtrip | 6.47% | 0.47 | -16.46% | 4.34 |
-| gbrt_flat_40bp_roundtrip | 10.38% | 0.77 | -10.93% | 1.38 |
-| gbrt_flat_80bp_roundtrip | 10.08% | 0.74 | -11.03% | 1.39 |
+| elastic_flat_20bp_roundtrip | 13.29% | 0.74 | -16.67% | 11.83 |
+| gbrt_flat_20bp_roundtrip | 11.71% | 0.91 | -7.43% | 1.75 |
+| ensemble_flat_20bp_roundtrip | 5.60% | 0.40 | -16.14% | 4.07 |
+| gbrt_flat_40bp_roundtrip | 11.52% | 0.89 | -7.47% | 1.75 |
+| gbrt_flat_80bp_roundtrip | 11.14% | 0.86 | -7.54% | 1.76 |
 
 ## Rank IC
 
-| 分数 | 日数 | 平均 Rank IC | 年化 ICIR | 正 IC 日占比 |
-|---|---:|---:|---:|---:|
-| factor_score | 569 | 0.0793 | 12.26 | 79.8% |
-| elastic_score | 569 | 0.0871 | 12.33 | 80.3% |
-| gbrt_score | 569 | 0.0912 | 12.57 | 80.7% |
-| ensemble_score | 569 | 0.0863 | 12.50 | 79.6% |
+| 分数 | 日数 | 平均 Rank IC | 年化 ICIR | HAC(4) t | 正 IC 日占比 |
+|---|---:|---:|---:|---:|---:|
+| factor_score | 569 | 0.0790 | 12.16 | 10.29 | 79.6% |
+| elastic_score | 569 | 0.0865 | 12.33 | 10.49 | 80.7% |
+| gbrt_score | 569 | 0.0912 | 12.68 | 10.71 | 81.0% |
+| ensemble_score | 569 | 0.0856 | 12.44 | 10.53 | 79.8% |
 
 ## 模型训练标签 Rank IC
 
-| 分数 | 日数 | 平均 Rank IC | 年化 ICIR | 正 IC 日占比 |
-|---|---:|---:|---:|---:|
-| factor_score | 569 | 0.0793 | 12.26 | 79.8% |
-| elastic_score | 569 | 0.0871 | 12.33 | 80.3% |
-| gbrt_score | 569 | 0.0912 | 12.57 | 80.7% |
-| ensemble_score | 569 | 0.0863 | 12.50 | 79.6% |
+| 分数 | 日数 | 平均 Rank IC | 年化 ICIR | HAC(4) t | 正 IC 日占比 |
+|---|---:|---:|---:|---:|---:|
+| factor_score | 569 | 0.0697 | 10.79 | 9.88 | 75.9% |
+| elastic_score | 569 | 0.0758 | 10.76 | 9.97 | 76.3% |
+| gbrt_score | 569 | 0.0804 | 11.19 | 10.22 | 78.4% |
+| ensemble_score | 569 | 0.0755 | 11.00 | 10.09 | 76.8% |
 
 ICIR 基于重叠的五日标签，仅作模型比较；显著性判断需使用重叠收益稳健误差。
 

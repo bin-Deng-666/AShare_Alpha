@@ -6,12 +6,14 @@ import pandas as pd
 from strategy.rotating.features.build_panel import (
     CANDIDATE_MODEL_INPUT_FEATURES,
     MODEL_INPUT_FEATURES,
+    MODEL_TARGET_COLUMN,
     build_factor_panel,
 )
 
 
 def test_engineered_feature_pack_is_the_selected_model_input_schema() -> None:
     assert MODEL_INPUT_FEATURES == CANDIDATE_MODEL_INPUT_FEATURES
+    assert MODEL_TARGET_COLUMN == "target_path_rank"
 
 
 def test_build_factor_panel_keeps_low_liquidity_observations_in_rolling_window() -> None:
@@ -124,6 +126,124 @@ def test_build_factor_panel_labels_next_open_through_sixth_open() -> None:
             16.0 / 11.0 - 1.0,
         ]
     )
+
+
+def test_forward_interval_labels_require_an_executable_complete_path() -> None:
+    dates = pd.bdate_range("2024-01-02", periods=8)
+    source = pd.DataFrame(
+        {
+            "code": "000001",
+            "date": dates,
+            "open": np.arange(10.0, 18.0),
+            "high": np.arange(10.5, 18.5),
+            "low": np.arange(9.5, 17.5),
+            "close": np.arange(10.0, 18.0),
+            "amount": 100e6,
+            "turnover_pct": 1.0,
+            "float_market_cap": 10e9,
+            "is_st": False,
+            "trade_status": [True, True, True, False, True, True, True, True],
+            "limit_up": np.nan,
+            "limit_down": np.nan,
+        }
+    )
+
+    panel = build_factor_panel(
+        start=str(dates[0].date()),
+        end=str(dates[-1].date()),
+        source=source,
+        min_history=1,
+        min_listing_sessions=1,
+        min_median_amount=0.0,
+        min_float_market_cap=0.0,
+    )
+
+    first = panel.iloc[0]
+    assert pd.isna(first["target_5"])
+    assert pd.isna(first["target_path_5"])
+
+
+def test_engineered_features_use_the_preregistered_complete_windows() -> None:
+    dates = pd.bdate_range("2024-01-02", periods=25)
+    index = np.arange(25, dtype=float)
+    close = pd.Series(100.0 + index + np.sin(index / 3.0))
+    previous_close = close.shift(1)
+    open_price = previous_close.fillna(close.iloc[0]) * (1.0 + 0.001 * (index % 3))
+    high = pd.Series(open_price + 1.0 + 0.05 * index)
+    low = pd.Series(open_price - 0.5 - 0.02 * index)
+    amount = pd.Series(100e6 * np.exp(index / 50.0))
+    turnover = pd.Series(1.0 + index / 20.0)
+    source = pd.DataFrame(
+        {
+            "code": "000001",
+            "date": dates,
+            "open": open_price,
+            "high": high,
+            "low": low,
+            "close": close,
+            "amount": amount,
+            "turnover_pct": turnover,
+            "float_market_cap": 10e9,
+            "is_st": False,
+            "trade_status": True,
+        }
+    )
+
+    panel = build_factor_panel(
+        start=str(dates[0].date()),
+        end=str(dates[-1].date()),
+        source=source,
+        min_history=1,
+        min_listing_sessions=1,
+        min_median_amount=0.0,
+        min_float_market_cap=0.0,
+    )
+    last = panel.iloc[-1]
+    ret_1 = close.pct_change(fill_method=None)
+    expected_downside = np.sqrt(ret_1.clip(upper=0.0).pow(2.0).iloc[-20:].mean())
+    expected_range = ((high - low) / previous_close).iloc[-10:].mean()
+    expected_location = (
+        (close - low) / (high - low + 1e-12)
+    ).iloc[-10:].mean()
+    expected_turnover_shock = (
+        turnover.iloc[-5:].mean() / turnover.iloc[-20:].mean() - 1.0
+    )
+
+    assert np.isclose(last["downside_vol_20"], expected_downside)
+    assert np.isclose(last["range_vol_10"], expected_range)
+    assert np.isclose(last["close_location_mean_10"], expected_location)
+    assert np.isclose(last["turnover_shock_5_20"], expected_turnover_shock)
+
+
+def test_close_location_keeps_zero_range_sessions_with_epsilon() -> None:
+    dates = pd.bdate_range("2024-01-02", periods=12)
+    source = pd.DataFrame(
+        {
+            "code": "000001",
+            "date": dates,
+            "open": 10.0,
+            "high": 10.0,
+            "low": 10.0,
+            "close": 10.0,
+            "amount": 100e6,
+            "turnover_pct": 1.0,
+            "float_market_cap": 10e9,
+            "is_st": False,
+            "trade_status": True,
+        }
+    )
+
+    panel = build_factor_panel(
+        start=str(dates[0].date()),
+        end=str(dates[-1].date()),
+        source=source,
+        min_history=1,
+        min_listing_sessions=1,
+        min_median_amount=0.0,
+        min_float_market_cap=0.0,
+    )
+
+    assert panel.iloc[-1]["close_location_mean_10"] == 0.0
 
 
 def test_build_factor_panel_uses_market_sessions_for_label_horizon() -> None:

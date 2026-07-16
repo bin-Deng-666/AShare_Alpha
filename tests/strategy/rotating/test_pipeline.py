@@ -1,8 +1,39 @@
 from __future__ import annotations
 
+import json
+
 import pandas as pd
 
 from strategy.rotating import pipeline
+
+
+def test_build_panel_dataset_never_reads_after_explicit_data_cutoff(
+    tmp_path, monkeypatch
+) -> None:
+    requested: list[tuple[pd.Timestamp, pd.Timestamp]] = []
+
+    def fake_source(start, end):
+        requested.append((pd.Timestamp(start), pd.Timestamp(end)))
+        return pd.DataFrame()
+
+    monkeypatch.setattr(pipeline, "load_point_in_time_source", fake_source)
+    monkeypatch.setattr(
+        pipeline,
+        "build_factor_panel",
+        lambda *args, **kwargs: pd.DataFrame(
+            {"date": pd.to_datetime(["2023-01-03"])}
+        ),
+    )
+
+    pipeline.build_panel_dataset(
+        "2023-01-01",
+        "2023-12-31",
+        output_root=tmp_path / "panel",
+        data_cutoff="2023-12-31",
+    )
+
+    assert requested
+    assert max(end for _, end in requested) <= pd.Timestamp("2023-12-31")
 
 
 def test_run_backtest_dataset_does_not_cross_the_public_end_date(
@@ -22,8 +53,22 @@ def test_run_backtest_dataset_does_not_cross_the_public_end_date(
             "ensemble_score": [0.2],
         }
     )
-    score_path = tmp_path / "scores.parquet"
+    score_root = tmp_path / "scores"
+    score_path = score_root / "year=2024" / "scores.parquet"
+    score_path.parent.mkdir(parents=True)
     scores.to_parquet(score_path, index=False)
+    (score_root / "_SCORE_SPEC.json").write_text(
+        json.dumps(
+            {
+                "feature_columns": ["rank_ret_5"],
+                "target_column": "target_rank",
+                "min_train_rows": 2000,
+                "train_years": 3,
+                "random_state": 17,
+            }
+        ),
+        encoding="utf-8",
+    )
     observed: dict[str, pd.Timestamp] = {}
 
     def fake_execution_bars(start, requested_end):
@@ -72,14 +117,15 @@ def test_run_backtest_dataset_does_not_cross_the_public_end_date(
     monkeypatch.setattr(pipeline, "run_portfolio", fake_portfolio)
     monkeypatch.setattr(pipeline, "compute_metrics", fake_metrics)
 
-    pipeline.run_backtest_dataset(
+    payload = pipeline.run_backtest_dataset(
         "2024-01-02",
         str(end.date()),
-        score_root=score_path,
+        score_root=score_root,
         report_root=tmp_path / "reports",
     )
 
     assert observed == {"start": pd.Timestamp("2024-01-02"), "end": end}
+    assert payload["score_specification"]["feature_columns"] == ["rank_ret_5"]
 
 
 def test_flat_cost_stresses_hold_the_trade_path_fixed(tmp_path, monkeypatch) -> None:
@@ -259,6 +305,10 @@ def test_score_diagnostics_exclude_labels_realized_after_the_public_end(
 
     assert payload["score_diagnostics"]["gbrt_score"]["days"] == 1
     assert payload["model_target_diagnostics"]["gbrt_score"]["days"] == 1
+    diagnostic = payload["model_target_diagnostics"]["gbrt_score"]
+    assert diagnostic["rank_ic_hac_lags"] == 4
+    assert diagnostic["rank_ic_by_year"]["2024"]["days"] == 1
+    assert diagnostic["rank_ic_by_cohort"]["0"]["days"] == 1
     assert (
         payload["model_target_diagnostics"]["gbrt_score"]["rank_ic_mean"]
         < -0.99

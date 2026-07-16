@@ -7,15 +7,20 @@
   "data_release": "data-cn-2026-05-26",
   "public_test_boundary": {
     "development": ["2021-01-01", "2023-12-31"],
+    "development_physical_data_cutoff": "2023-12-31",
+    "development_max_bar_or_label_date": "2023-12-29",
     "holdout": ["2024-01-01", "2026-05-22"],
-    "data_cutoff": "2026-05-22",
+    "holdout_data_cutoff": "2026-05-22",
     "post_cutoff_bars_or_fills_in_metrics": false,
     "post_cutoff_labels_in_diagnostics": false,
     "holdout_used_for_feature_or_label_selection": false
   },
   "selected_research_score_column": "gbrt_score",
-  "selected_target": "target_rank",
-  "target_definition": "T+1 open to T+6 open five-trading-day interval return, industry and log-float-market-cap neutralized and cross-sectionally ranked",
+  "selected_target": "target_path_rank",
+  "target_definition": "Mean of T+2 through T+6 open returns relative to T+1 open, industry and log-float-market-cap neutralized and cross-sectionally ranked",
+  "label_available_date": "T+6",
+  "complete_path_required": true,
+  "development_eligible_label_coverage": 0.987643,
   "engineered_features": [
     "overnight_gap_mean_5",
     "close_location_mean_10",
@@ -27,30 +32,41 @@
     "turnover_shock_5_20"
   ],
   "rejected_target": {
-    "name": "target_path_rank",
-    "reason": "It improved two of three annual return/Sharpe pairs and full-period drawdown, but failed to beat the endpoint target under the preregistered 20bp fixed-path cost stress."
+    "name": "target_rank",
+    "reason": "The path target beat the endpoint target in annual return and Sharpe in all three development years, improved full-period drawdown by 2.27 percentage points, and led by 4.98 percentage points under the preregistered 20bp fixed-path stress."
   },
-  "selection_basis": "The engineered endpoint candidate improved development-period GBRT historical return, Sharpe, drawdown, 20bp stress return and Rank IC versus v0.1. The path target was rejected before the holdout was reopened.",
+  "selection_basis": "The eight engineered features were fixed for both candidates. The path target passed every preregistered development-period gate before the physically separate holdout was scored.",
+  "score_specification": {
+    "feature_count": 35,
+    "min_train_rows": 2000,
+    "train_years": 3,
+    "random_state": 17
+  },
   "development": {
-    "ann_return": -0.028278,
-    "sharpe": -0.179,
-    "max_drawdown": -0.264304,
-    "flat_20bp_ann_return": -0.017588,
-    "rank_ic_mean": 0.087442,
-    "positive_rank_ic_day_fraction": 0.843273
+    "ann_return": -0.001278,
+    "sharpe": -0.008,
+    "max_drawdown": -0.256793,
+    "flat_20bp_ann_return": -0.002919,
+    "endpoint_rank_ic_mean": 0.086857,
+    "model_target_rank_ic_mean": 0.077655,
+    "endpoint_positive_rank_ic_day_fraction": 0.850208,
+    "endpoint_rank_ic_hac4_t": 14.387
   },
   "holdout": {
-    "ann_return": 0.108408,
-    "sharpe": 0.781,
-    "max_drawdown": -0.113953,
-    "flat_20bp_ann_return": 0.105252,
+    "ann_return": 0.117398,
+    "sharpe": 0.910,
+    "max_drawdown": -0.074512,
+    "flat_20bp_ann_return": 0.117056,
     "benchmark_ann_return": 0.153756,
-    "rank_ic_mean": 0.091232,
-    "positive_rank_ic_day_fraction": 0.806678
+    "endpoint_rank_ic_mean": 0.091205,
+    "model_target_rank_ic_mean": 0.080450,
+    "endpoint_positive_rank_ic_day_fraction": 0.810193,
+    "endpoint_rank_ic_hac4_t": 10.715
   },
   "admission_status": "research_only_forward_validation_required",
   "unmet_gates": [
-    "Development-period absolute return is negative.",
+    "Development-period absolute return is slightly negative.",
+    "At 20bp fixed-path cost, holdout GBRT annual return does not exceed Elastic Net.",
     "Holdout annual return does not exceed the CSI 300 benchmark.",
     "Deflated Sharpe Ratio and complete multiple-testing inventory are not evaluated.",
     "Announcement-quality financial PIT data and forward paper trading are not complete."

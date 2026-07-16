@@ -9,7 +9,10 @@ import pandas as pd
 from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.linear_model import ElasticNet
 
-from strategy.rotating.features.build_panel import MODEL_INPUT_FEATURES
+from strategy.rotating.features.build_panel import (
+    MODEL_INPUT_FEATURES,
+    MODEL_TARGET_COLUMN,
+)
 
 
 FACTOR_DIRECTIONS = {
@@ -32,7 +35,7 @@ def walk_forward_score(
     *,
     prediction_dates: Iterable[pd.Timestamp | str] | None = None,
     feature_columns: Sequence[str] | None = None,
-    target_column: str = "target_rank",
+    target_column: str = MODEL_TARGET_COLUMN,
     min_train_rows: int = 2_000,
     train_years: int = 3,
     random_state: int = 17,

@@ -30,64 +30,803 @@
     "slippage_amt_large": 500000000.0,
     "slippage_amt_mid": 100000000.0
   },
+  "score_specification": {
+    "feature_columns": [
+      "rank_ret_5",
+      "rank_ret_20",
+      "rank_ret_60",
+      "rank_mom_20_5",
+      "rank_mom_120_20",
+      "rank_reversal_20",
+      "rank_vol_20",
+      "rank_vol_60",
+      "rank_maxret_20",
+      "rank_drawdown_60",
+      "rank_trend_quality_60",
+      "rank_turnover_abnormal_20_250",
+      "rank_turnover_cv_20",
+      "rank_amount_ratio_5_20",
+      "rank_amount_ratio_20_60",
+      "rank_amount_cv_20",
+      "rank_amihud_20",
+      "rank_adv_20",
+      "rank_ep",
+      "rank_bp",
+      "rank_roe",
+      "rank_log_float_market_cap",
+      "rank_overnight_gap_mean_5",
+      "rank_close_location_mean_10",
+      "rank_trend_r2_20",
+      "rank_trend_residual_20",
+      "rank_downside_vol_20",
+      "rank_range_vol_10",
+      "rank_price_volume_corr_20",
+      "rank_turnover_shock_5_20",
+      "ep_missing",
+      "bp_missing",
+      "roe_missing",
+      "board_star",
+      "board_chinext"
+    ],
+    "target_column": "target_path_rank",
+    "min_train_rows": 2000,
+    "train_years": 3,
+    "random_state": 17
+  },
   "score_diagnostics": {
     "factor_score": {
       "days": 569,
-      "rank_ic_mean": 0.07932742056261673,
-      "rank_ic_std": 0.10065658982865613,
-      "rank_icir_annualized": 12.259952939054102,
-      "positive_day_fraction": 0.7978910369068541
+      "rank_ic_mean": 0.07897702554747361,
+      "rank_ic_std": 0.10104267599559749,
+      "rank_icir_annualized": 12.159161215701475,
+      "positive_day_fraction": 0.7961335676625659,
+      "rank_ic_hac_lags": 4,
+      "rank_ic_hac_standard_error": 0.007676096604690978,
+      "rank_ic_hac_t_stat": 10.288696145279042,
+      "rank_ic_by_year": {
+        "2024": {
+          "days": 242,
+          "rank_ic_mean": 0.09012038475628585,
+          "rank_ic_std": 0.1071882517201309,
+          "rank_icir_annualized": 13.079270830121517,
+          "positive_day_fraction": 0.8099173553719008,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.012517123243912808,
+          "rank_ic_hac_t_stat": 7.1997681096662705
+        },
+        "2025": {
+          "days": 243,
+          "rank_ic_mean": 0.08533417864831483,
+          "rank_ic_std": 0.08810077871025111,
+          "rank_icir_annualized": 15.067838218870447,
+          "positive_day_fraction": 0.8559670781893004,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.00972746723086059,
+          "rank_ic_hac_t_stat": 8.772497159136183
+        },
+        "2026": {
+          "days": 84,
+          "rank_ic_mean": 0.028483202547033536,
+          "rank_ic_std": 0.10400167846488986,
+          "rank_icir_annualized": 4.260456670511977,
+          "positive_day_fraction": 0.5833333333333334,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.02062905654221463,
+          "rank_ic_hac_t_stat": 1.3807321962953776
+        }
+      },
+      "rank_ic_by_cohort": {
+        "0": {
+          "days": 114,
+          "rank_ic_mean": 0.07976265285553856,
+          "rank_ic_std": 0.10897655161256682,
+          "rank_icir_annualized": 11.386079495725848,
+          "positive_day_fraction": 0.7807017543859649,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.009704155663600278,
+          "rank_ic_hac_t_stat": 8.219432542155483
+        },
+        "1": {
+          "days": 114,
+          "rank_ic_mean": 0.08080387834703806,
+          "rank_ic_std": 0.10623575631448241,
+          "rank_icir_annualized": 11.832300072651108,
+          "positive_day_fraction": 0.7631578947368421,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.00927781775453175,
+          "rank_ic_hac_t_stat": 8.709362533831774
+        },
+        "2": {
+          "days": 114,
+          "rank_ic_mean": 0.08096561209312035,
+          "rank_ic_std": 0.09840107455560694,
+          "rank_icir_annualized": 12.799955076460696,
+          "positive_day_fraction": 0.8245614035087719,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.009802741922918077,
+          "rank_ic_hac_t_stat": 8.259486246784567
+        },
+        "3": {
+          "days": 114,
+          "rank_ic_mean": 0.07641245474719115,
+          "rank_ic_std": 0.09021117667506012,
+          "rank_icir_annualized": 13.176846506462963,
+          "positive_day_fraction": 0.7894736842105263,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.009756537017005679,
+          "rank_ic_hac_t_stat": 7.831923828506361
+        },
+        "4": {
+          "days": 113,
+          "rank_ic_mean": 0.07692250760728542,
+          "rank_ic_std": 0.10202792295941719,
+          "rank_icir_annualized": 11.728489161596006,
+          "positive_day_fraction": 0.8230088495575221,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.009846980436356503,
+          "rank_ic_hac_t_stat": 7.811786374965892
+        }
+      }
     },
     "elastic_score": {
       "days": 569,
-      "rank_ic_mean": 0.0871199296187288,
-      "rank_ic_std": 0.10992794487274335,
-      "rank_icir_annualized": 12.328694471516426,
-      "positive_day_fraction": 0.8031634446397188
+      "rank_ic_mean": 0.08650270790283071,
+      "rank_ic_std": 0.10914198236294434,
+      "rank_icir_annualized": 12.329502365140055,
+      "positive_day_fraction": 0.8066783831282952,
+      "rank_ic_hac_lags": 4,
+      "rank_ic_hac_standard_error": 0.008245435328089303,
+      "rank_ic_hac_t_stat": 10.490981307942148,
+      "rank_ic_by_year": {
+        "2024": {
+          "days": 242,
+          "rank_ic_mean": 0.0972927543467562,
+          "rank_ic_std": 0.11095890296205747,
+          "rank_icir_annualized": 13.640366112970057,
+          "positive_day_fraction": 0.859504132231405,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.01285928055958435,
+          "rank_ic_hac_t_stat": 7.565956267611055
+        },
+        "2025": {
+          "days": 243,
+          "rank_ic_mean": 0.09503985792610843,
+          "rank_ic_std": 0.10025050360858428,
+          "rank_icir_annualized": 14.747788422777178,
+          "positive_day_fraction": 0.831275720164609,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.011007205937633994,
+          "rank_ic_hac_t_stat": 8.634330861491751
+        },
+        "2026": {
+          "days": 84,
+          "rank_ic_mean": 0.030720342485134815,
+          "rank_ic_std": 0.1129789500112391,
+          "rank_icir_annualized": 4.229959428441525,
+          "positive_day_fraction": 0.5833333333333334,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.02269225148408243,
+          "rank_ic_hac_t_stat": 1.3537811577085561
+        }
+      },
+      "rank_ic_by_cohort": {
+        "0": {
+          "days": 114,
+          "rank_ic_mean": 0.08706832044992613,
+          "rank_ic_std": 0.11912788109962931,
+          "rank_icir_annualized": 11.369842084523311,
+          "positive_day_fraction": 0.8070175438596491,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.01082196673343584,
+          "rank_ic_hac_t_stat": 8.045517288545852
+        },
+        "1": {
+          "days": 114,
+          "rank_ic_mean": 0.08699867712456798,
+          "rank_ic_std": 0.11361213590673426,
+          "rank_icir_annualized": 11.912299590863348,
+          "positive_day_fraction": 0.7982456140350878,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.010319682928549803,
+          "rank_ic_hac_t_stat": 8.430363386832628
+        },
+        "2": {
+          "days": 114,
+          "rank_ic_mean": 0.09099972354875316,
+          "rank_ic_std": 0.10336101437217893,
+          "rank_icir_annualized": 13.695913144447374,
+          "positive_day_fraction": 0.8508771929824561,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.011201685341466535,
+          "rank_ic_hac_t_stat": 8.123752879567977
+        },
+        "3": {
+          "days": 114,
+          "rank_ic_mean": 0.0831294241992875,
+          "rank_ic_std": 0.10078984139343908,
+          "rank_icir_annualized": 12.83056241189863,
+          "positive_day_fraction": 0.7982456140350878,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.011357449111035192,
+          "rank_ic_hac_t_stat": 7.319374569639655
+        },
+        "4": {
+          "days": 113,
+          "rank_ic_mean": 0.0842980551322275,
+          "rank_ic_std": 0.10956168329175092,
+          "rank_icir_annualized": 11.969239080184124,
+          "positive_day_fraction": 0.7787610619469026,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.01071510562093496,
+          "rank_ic_hac_t_stat": 7.867216443254431
+        }
+      }
     },
     "gbrt_score": {
       "days": 569,
-      "rank_ic_mean": 0.0912321012438052,
-      "rank_ic_std": 0.11287078462655542,
-      "rank_icir_annualized": 12.574010437034941,
-      "positive_day_fraction": 0.8066783831282952
+      "rank_ic_mean": 0.09120524584164039,
+      "rank_ic_std": 0.11191822276881255,
+      "rank_icir_annualized": 12.677297912850653,
+      "positive_day_fraction": 0.8101933216168717,
+      "rank_ic_hac_lags": 4,
+      "rank_ic_hac_standard_error": 0.008512101518450502,
+      "rank_ic_hac_t_stat": 10.71477421221392,
+      "rank_ic_by_year": {
+        "2024": {
+          "days": 242,
+          "rank_ic_mean": 0.10274383573773657,
+          "rank_ic_std": 0.11270304791643589,
+          "rank_icir_annualized": 14.18168376991034,
+          "positive_day_fraction": 0.8677685950413223,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.01333162578449453,
+          "rank_ic_hac_t_stat": 7.706774657389029
+        },
+        "2025": {
+          "days": 243,
+          "rank_ic_mean": 0.09804238149461211,
+          "rank_ic_std": 0.10489677436292841,
+          "rank_icir_annualized": 14.539832428883782,
+          "positive_day_fraction": 0.8148148148148148,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.011470672121732677,
+          "rank_ic_hac_t_stat": 8.547222033210948
+        },
+        "2026": {
+          "days": 84,
+          "rank_ic_mean": 0.03818426109726645,
+          "rank_ic_std": 0.11568997253392811,
+          "rank_icir_annualized": 5.134478693633039,
+          "positive_day_fraction": 0.6309523809523809,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.023371864274646652,
+          "rank_ic_hac_t_stat": 1.6337704450341173
+        }
+      },
+      "rank_ic_by_cohort": {
+        "0": {
+          "days": 114,
+          "rank_ic_mean": 0.09198463506519138,
+          "rank_ic_std": 0.12108428691223623,
+          "rank_icir_annualized": 11.817760498252252,
+          "positive_day_fraction": 0.8070175438596491,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.011246073515576133,
+          "rank_ic_hac_t_stat": 8.179266740324081
+        },
+        "1": {
+          "days": 114,
+          "rank_ic_mean": 0.09251017604781027,
+          "rank_ic_std": 0.11567811281167122,
+          "rank_icir_annualized": 12.440733747192464,
+          "positive_day_fraction": 0.8157894736842105,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.01077287203142135,
+          "rank_ic_hac_t_stat": 8.58732710998375
+        },
+        "2": {
+          "days": 114,
+          "rank_ic_mean": 0.09457257503166404,
+          "rank_ic_std": 0.10647090083077579,
+          "rank_icir_annualized": 13.8178975583189,
+          "positive_day_fraction": 0.8508771929824561,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.011591237112665485,
+          "rank_ic_hac_t_stat": 8.158971653537025
+        },
+        "3": {
+          "days": 114,
+          "rank_ic_mean": 0.08786302616150582,
+          "rank_ic_std": 0.1042718125163539,
+          "rank_icir_annualized": 13.10831645227043,
+          "positive_day_fraction": 0.7894736842105263,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.011570221296176002,
+          "rank_ic_hac_t_stat": 7.5938933156399395
+        },
+        "4": {
+          "days": 113,
+          "rank_ic_mean": 0.08907714938929046,
+          "rank_ic_std": 0.11310674131680436,
+          "rank_icir_annualized": 12.251393898098982,
+          "positive_day_fraction": 0.7876106194690266,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.011257104468205192,
+          "rank_ic_hac_t_stat": 7.912971727399516
+        }
+      }
     },
     "ensemble_score": {
       "days": 569,
-      "rank_ic_mean": 0.08632065548012645,
-      "rank_ic_std": 0.1074336493272315,
-      "rank_icir_annualized": 12.499196173929661,
-      "positive_day_fraction": 0.7961335676625659
+      "rank_ic_mean": 0.085599445071368,
+      "rank_ic_std": 0.10705007225737953,
+      "rank_icir_annualized": 12.439177569776357,
+      "positive_day_fraction": 0.7978910369068541,
+      "rank_ic_hac_lags": 4,
+      "rank_ic_hac_standard_error": 0.008127554546478927,
+      "rank_ic_hac_t_stat": 10.532004993857834,
+      "rank_ic_by_year": {
+        "2024": {
+          "days": 242,
+          "rank_ic_mean": 0.09744370867305455,
+          "rank_ic_std": 0.1116154278256044,
+          "rank_icir_annualized": 13.58117231316381,
+          "positive_day_fraction": 0.8223140495867769,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.013032733436928633,
+          "rank_ic_hac_t_stat": 7.476843529765209
+        },
+        "2025": {
+          "days": 243,
+          "rank_ic_mean": 0.09277758297835383,
+          "rank_ic_std": 0.09539679283245985,
+          "rank_icir_annualized": 15.129234795018418,
+          "positive_day_fraction": 0.8477366255144033,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.010507503791816681,
+          "rank_ic_hac_t_stat": 8.829650202040343
+        },
+        "2026": {
+          "days": 84,
+          "rank_ic_mean": 0.030711358130824033,
+          "rank_ic_std": 0.11003127750184549,
+          "rank_icir_annualized": 4.3420073083726685,
+          "positive_day_fraction": 0.5833333333333334,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.02190847278820697,
+          "rank_ic_hac_t_stat": 1.4018027832298532
+        }
+      },
+      "rank_ic_by_cohort": {
+        "0": {
+          "days": 114,
+          "rank_ic_mean": 0.08628706700370477,
+          "rank_ic_std": 0.11587499676597722,
+          "rank_icir_annualized": 11.584136198642918,
+          "positive_day_fraction": 0.7807017543859649,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.0104372925221775,
+          "rank_ic_hac_t_stat": 8.26718871971435
+        },
+        "1": {
+          "days": 114,
+          "rank_ic_mean": 0.08736991976454142,
+          "rank_ic_std": 0.11226866600335365,
+          "rank_icir_annualized": 12.106289569509086,
+          "positive_day_fraction": 0.7543859649122807,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.009952312241786774,
+          "rank_ic_hac_t_stat": 8.778856374471586
+        },
+        "2": {
+          "days": 114,
+          "rank_ic_mean": 0.08818731650211785,
+          "rank_ic_std": 0.1033228452441639,
+          "rank_icir_annualized": 13.277534954157778,
+          "positive_day_fraction": 0.8508771929824561,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.010618311109481785,
+          "rank_ic_hac_t_stat": 8.30521121417978
+        },
+        "3": {
+          "days": 114,
+          "rank_ic_mean": 0.08269536896126677,
+          "rank_ic_std": 0.09630175272250267,
+          "rank_icir_annualized": 13.358407290281603,
+          "positive_day_fraction": 0.7894736842105263,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.010592716020862212,
+          "rank_ic_hac_t_stat": 7.806814493884227
+        },
+        "4": {
+          "days": 113,
+          "rank_ic_mean": 0.08343859832922554,
+          "rank_ic_std": 0.10817535515233309,
+          "rank_icir_annualized": 11.99903591146671,
+          "positive_day_fraction": 0.8141592920353983,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.01056838448860489,
+          "rank_ic_hac_t_stat": 7.895113810364416
+        }
+      }
     }
   },
   "model_target_diagnostics": {
     "factor_score": {
       "days": 569,
-      "rank_ic_mean": 0.07932742056261673,
-      "rank_ic_std": 0.10065658982865613,
-      "rank_icir_annualized": 12.259952939054102,
-      "positive_day_fraction": 0.7978910369068541
+      "rank_ic_mean": 0.06970937793189982,
+      "rank_ic_std": 0.10053823544298891,
+      "rank_icir_annualized": 10.786179207110322,
+      "positive_day_fraction": 0.7592267135325131,
+      "rank_ic_hac_lags": 4,
+      "rank_ic_hac_standard_error": 0.0070566703693233914,
+      "rank_ic_hac_t_stat": 9.878508458456407,
+      "rank_ic_by_year": {
+        "2024": {
+          "days": 242,
+          "rank_ic_mean": 0.07898735684167106,
+          "rank_ic_std": 0.1060170160296862,
+          "rank_icir_annualized": 11.590166846163367,
+          "positive_day_fraction": 0.7892561983471075,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.011515221084912921,
+          "rank_ic_hac_t_stat": 6.859386915737048
+        },
+        "2025": {
+          "days": 243,
+          "rank_ic_mean": 0.07660807490730882,
+          "rank_ic_std": 0.08852052555415581,
+          "rank_icir_annualized": 13.462888480075932,
+          "positive_day_fraction": 0.8065843621399177,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.00879207414612298,
+          "rank_ic_hac_t_stat": 8.713310833609212
+        },
+        "2026": {
+          "days": 84,
+          "rank_ic_mean": 0.023023017679649548,
+          "rank_ic_std": 0.1053276384304178,
+          "rank_icir_annualized": 3.400381017552969,
+          "positive_day_fraction": 0.5357142857142857,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.019614066174464782,
+          "rank_ic_hac_t_stat": 1.173801366573486
+        }
+      },
+      "rank_ic_by_cohort": {
+        "0": {
+          "days": 114,
+          "rank_ic_mean": 0.07221960584743274,
+          "rank_ic_std": 0.10606391792800562,
+          "rank_icir_annualized": 10.592418501908064,
+          "positive_day_fraction": 0.7543859649122807,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.00957813917001118,
+          "rank_ic_hac_t_stat": 7.540045573105663
+        },
+        "1": {
+          "days": 114,
+          "rank_ic_mean": 0.06796056117176956,
+          "rank_ic_std": 0.10254065814829215,
+          "rank_icir_annualized": 10.310234394465313,
+          "positive_day_fraction": 0.7368421052631579,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.00850388064607999,
+          "rank_ic_hac_t_stat": 7.991711549138116
+        },
+        "2": {
+          "days": 114,
+          "rank_ic_mean": 0.0705352602180948,
+          "rank_ic_std": 0.10192414596242154,
+          "rank_icir_annualized": 10.765566172023158,
+          "positive_day_fraction": 0.7543859649122807,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.009530923689475801,
+          "rank_ic_hac_t_stat": 7.400674112623623
+        },
+        "3": {
+          "days": 114,
+          "rank_ic_mean": 0.06720851073728923,
+          "rank_ic_std": 0.09448492269842385,
+          "rank_icir_annualized": 11.065459244162934,
+          "positive_day_fraction": 0.7807017543859649,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.010273229025876405,
+          "rank_ic_hac_t_stat": 6.542101861839462
+        },
+        "4": {
+          "days": 113,
+          "rank_ic_mean": 0.07063103640839077,
+          "rank_ic_std": 0.09898169313589429,
+          "rank_icir_annualized": 11.1006493315571,
+          "positive_day_fraction": 0.7699115044247787,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.00962161453169319,
+          "rank_ic_hac_t_stat": 7.340871552870377
+        }
+      }
     },
     "elastic_score": {
       "days": 569,
-      "rank_ic_mean": 0.0871199296187288,
-      "rank_ic_std": 0.10992794487274335,
-      "rank_icir_annualized": 12.328694471516426,
-      "positive_day_fraction": 0.8031634446397188
+      "rank_ic_mean": 0.07582498615769015,
+      "rank_ic_std": 0.10967489047910582,
+      "rank_icir_annualized": 10.75505939917261,
+      "positive_day_fraction": 0.7627416520210897,
+      "rank_ic_hac_lags": 4,
+      "rank_ic_hac_standard_error": 0.007604470519079686,
+      "rank_ic_hac_t_stat": 9.971106596763649,
+      "rank_ic_by_year": {
+        "2024": {
+          "days": 242,
+          "rank_ic_mean": 0.08415501475449422,
+          "rank_ic_std": 0.11230621008866527,
+          "rank_icir_annualized": 11.65692257132607,
+          "positive_day_fraction": 0.8016528925619835,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.011935465911939223,
+          "rank_ic_hac_t_stat": 7.050836169731147
+        },
+        "2025": {
+          "days": 243,
+          "rank_ic_mean": 0.08506137187919838,
+          "rank_ic_std": 0.10112693312057078,
+          "rank_icir_annualized": 13.084985002207022,
+          "positive_day_fraction": 0.7983539094650206,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.009992851194575365,
+          "rank_ic_hac_t_stat": 8.512222410093935
+        },
+        "2026": {
+          "days": 84,
+          "rank_ic_mean": 0.025107026029677255,
+          "rank_ic_std": 0.11322913575780624,
+          "rank_icir_annualized": 3.449409565199617,
+          "positive_day_fraction": 0.5476190476190477,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.021448457982533354,
+          "rank_ic_hac_t_stat": 1.1705748753650855
+        }
+      },
+      "rank_ic_by_cohort": {
+        "0": {
+          "days": 114,
+          "rank_ic_mean": 0.07820572107511493,
+          "rank_ic_std": 0.11775169341342555,
+          "rank_icir_annualized": 10.331872690136898,
+          "positive_day_fraction": 0.7719298245614035,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.010889046924346458,
+          "rank_ic_hac_t_stat": 7.182053821465069
+        },
+        "1": {
+          "days": 114,
+          "rank_ic_mean": 0.07251128915174618,
+          "rank_ic_std": 0.11261150598699517,
+          "rank_icir_annualized": 10.01683552752939,
+          "positive_day_fraction": 0.7280701754385965,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.00970349704865812,
+          "rank_ic_hac_t_stat": 7.472696574043236
+        },
+        "2": {
+          "days": 114,
+          "rank_ic_mean": 0.0796041032467605,
+          "rank_ic_std": 0.10750483247422933,
+          "rank_icir_annualized": 11.519009873813232,
+          "positive_day_fraction": 0.7543859649122807,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.010583368501609272,
+          "rank_ic_hac_t_stat": 7.521622556623267
+        },
+        "3": {
+          "days": 114,
+          "rank_ic_mean": 0.07246766971173463,
+          "rank_ic_std": 0.103726873984977,
+          "rank_icir_annualized": 10.868276767911409,
+          "positive_day_fraction": 0.7894736842105263,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.011643949413286421,
+          "rank_ic_hac_t_stat": 6.223633162562937
+        },
+        "4": {
+          "days": 113,
+          "rank_ic_mean": 0.07634067115570871,
+          "rank_ic_std": 0.10797788053755257,
+          "rank_icir_annualized": 10.998383480834558,
+          "positive_day_fraction": 0.7699115044247787,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.011026881213188336,
+          "rank_ic_hac_t_stat": 6.923142607576472
+        }
+      }
     },
     "gbrt_score": {
       "days": 569,
-      "rank_ic_mean": 0.0912321012438052,
-      "rank_ic_std": 0.11287078462655542,
-      "rank_icir_annualized": 12.574010437034941,
-      "positive_day_fraction": 0.8066783831282952
+      "rank_ic_mean": 0.08044963925827615,
+      "rank_ic_std": 0.11184534439430212,
+      "rank_icir_annualized": 11.189582248374794,
+      "positive_day_fraction": 0.7838312829525483,
+      "rank_ic_hac_lags": 4,
+      "rank_ic_hac_standard_error": 0.00787279870089721,
+      "rank_ic_hac_t_stat": 10.21868363649484,
+      "rank_ic_by_year": {
+        "2024": {
+          "days": 242,
+          "rank_ic_mean": 0.09001877621361397,
+          "rank_ic_std": 0.11315052859328054,
+          "rank_icir_annualized": 12.376111128197564,
+          "positive_day_fraction": 0.8388429752066116,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.01237271476599861,
+          "rank_ic_hac_t_stat": 7.275588091709192
+        },
+        "2025": {
+          "days": 243,
+          "rank_ic_mean": 0.08758907961806196,
+          "rank_ic_std": 0.1049955619151851,
+          "rank_icir_annualized": 12.977370496180734,
+          "positive_day_fraction": 0.7901234567901234,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.010487305213113361,
+          "rank_ic_hac_t_stat": 8.351914799670395
+        },
+        "2026": {
+          "days": 84,
+          "rank_ic_mean": 0.032228030322327295,
+          "rank_ic_std": 0.11627232274616323,
+          "rank_icir_annualized": 4.311864435433894,
+          "positive_day_fraction": 0.6071428571428571,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.022116871120314293,
+          "rank_ic_hac_t_stat": 1.4571695131290938
+        }
+      },
+      "rank_ic_by_cohort": {
+        "0": {
+          "days": 114,
+          "rank_ic_mean": 0.08239025137226609,
+          "rank_ic_std": 0.11973841979970846,
+          "rank_icir_annualized": 10.704095828404943,
+          "positive_day_fraction": 0.7807017543859649,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.0110806286744219,
+          "rank_ic_hac_t_stat": 7.435521376368526
+        },
+        "1": {
+          "days": 114,
+          "rank_ic_mean": 0.07828805311943048,
+          "rank_ic_std": 0.1142376072871475,
+          "rank_icir_annualized": 10.660905111264018,
+          "positive_day_fraction": 0.7543859649122807,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.00987307885356326,
+          "rank_ic_hac_t_stat": 7.929446759272645
+        },
+        "2": {
+          "days": 114,
+          "rank_ic_mean": 0.08386227500446251,
+          "rank_ic_std": 0.11011057017310798,
+          "rank_icir_annualized": 11.848007248164455,
+          "positive_day_fraction": 0.7894736842105263,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.010954669227394546,
+          "rank_ic_hac_t_stat": 7.655390889826829
+        },
+        "3": {
+          "days": 114,
+          "rank_ic_mean": 0.07666073914621559,
+          "rank_ic_std": 0.10660127363717135,
+          "rank_icir_annualized": 11.18711987515621,
+          "positive_day_fraction": 0.7982456140350878,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.011588826710804995,
+          "rank_ic_hac_t_stat": 6.61505612770445
+        },
+        "4": {
+          "days": 113,
+          "rank_ic_mean": 0.08105216294449927,
+          "rank_ic_std": 0.10988664363155941,
+          "rank_icir_annualized": 11.474331250677226,
+          "positive_day_fraction": 0.7964601769911505,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.0115881987658482,
+          "rank_ic_hac_t_stat": 6.994371134137743
+        }
+      }
     },
     "ensemble_score": {
       "days": 569,
-      "rank_ic_mean": 0.08632065548012645,
-      "rank_ic_std": 0.1074336493272315,
-      "rank_icir_annualized": 12.499196173929661,
-      "positive_day_fraction": 0.7961335676625659
+      "rank_ic_mean": 0.07548197300827099,
+      "rank_ic_std": 0.10673617434672883,
+      "rank_icir_annualized": 11.001180589050506,
+      "positive_day_fraction": 0.7680140597539543,
+      "rank_ic_hac_lags": 4,
+      "rank_ic_hac_standard_error": 0.007480010537243906,
+      "rank_ic_hac_t_stat": 10.091158646426608,
+      "rank_ic_by_year": {
+        "2024": {
+          "days": 242,
+          "rank_ic_mean": 0.08528481213145164,
+          "rank_ic_std": 0.1110555507122383,
+          "rank_icir_annualized": 11.946456609142183,
+          "positive_day_fraction": 0.8057851239669421,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.012017655569203433,
+          "rank_ic_hac_t_stat": 7.096626429368086
+        },
+        "2025": {
+          "days": 243,
+          "rank_ic_mean": 0.08318281198293932,
+          "rank_ic_std": 0.09582509858030998,
+          "rank_icir_annualized": 13.50398683288741,
+          "positive_day_fraction": 0.8106995884773662,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.00951986467156042,
+          "rank_ic_hac_t_stat": 8.737814543880976
+        },
+        "2026": {
+          "days": 84,
+          "rank_ic_mean": 0.024963033262388506,
+          "rank_ic_std": 0.11109905082456878,
+          "rank_icir_annualized": 3.495382357381656,
+          "positive_day_fraction": 0.5357142857142857,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.020798079637898485,
+          "rank_ic_hac_t_stat": 1.2002566437384248
+        }
+      },
+      "rank_ic_by_cohort": {
+        "0": {
+          "days": 114,
+          "rank_ic_mean": 0.07802580047409269,
+          "rank_ic_std": 0.11328788471134454,
+          "rank_icir_annualized": 10.714266585460571,
+          "positive_day_fraction": 0.7894736842105263,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.010373411185957256,
+          "rank_ic_hac_t_stat": 7.521710946898369
+        },
+        "1": {
+          "days": 114,
+          "rank_ic_mean": 0.07337475692628379,
+          "rank_ic_std": 0.1090621213461491,
+          "rank_icir_annualized": 10.465992464679676,
+          "positive_day_fraction": 0.7368421052631579,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.0090993505118007,
+          "rank_ic_hac_t_stat": 8.063735629386521
+        },
+        "2": {
+          "days": 114,
+          "rank_ic_mean": 0.07692367618600429,
+          "rank_ic_std": 0.10708032819506283,
+          "rank_icir_annualized": 11.175269889427302,
+          "positive_day_fraction": 0.7631578947368421,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.010202091901925954,
+          "rank_ic_hac_t_stat": 7.539990516208015
+        },
+        "3": {
+          "days": 114,
+          "rank_ic_mean": 0.07263974332984183,
+          "rank_ic_std": 0.10052448995391143,
+          "rank_icir_annualized": 11.24113350434386,
+          "positive_day_fraction": 0.7631578947368421,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.011036696232957137,
+          "rank_ic_hac_t_stat": 6.5816564845673
+        },
+        "4": {
+          "days": 113,
+          "rank_ic_mean": 0.07645441834740546,
+          "rank_ic_std": 0.10507597101266547,
+          "rank_icir_annualized": 11.318968715400775,
+          "positive_day_fraction": 0.7876106194690266,
+          "rank_ic_hac_lags": 4,
+          "rank_ic_hac_standard_error": 0.010449910656498978,
+          "rank_ic_hac_t_stat": 7.316274833398422
+        }
+      }
     }
   },
   "scenarios": {
@@ -399,60 +1138,60 @@
     "elastic_historical": {
       "capital": {
         "initial_capital": 1000000.0,
-        "ending_equity": 1187038.7483098467,
-        "ending_cash": 45583.74830984663,
-        "ending_market_value": 1141455.0,
-        "total_pnl": 187038.74830984673,
-        "total_return": 0.18703874830984674,
-        "total_fees": 14550.546990153998,
-        "realized_pnl": 229128.89596138068,
-        "unrealized_pnl": -42090.147651533945
+        "ending_equity": 1332473.3547905667,
+        "ending_cash": 59095.35479056683,
+        "ending_market_value": 1273378.0,
+        "total_pnl": 332473.3547905667,
+        "total_return": 0.3324733547905667,
+        "total_fees": 16214.770509433998,
+        "realized_pnl": 378638.4144081428,
+        "unrealized_pnl": -46165.05961757607
       },
       "returns": {
-        "ann_return": 0.07454974366521094,
+        "ann_return": 0.12791144868517867,
         "bench_total_return": 0.4064407505261389,
         "bench_ann_return": 0.1537562633136207,
-        "excess_total": -0.21940200221629214,
-        "excess_ann": -0.09808704526610579,
-        "excess_nav_total": -0.2182236748126366
+        "excess_total": -0.0739673957355722,
+        "excess_ann": -0.05339932787119628,
+        "excess_nav_total": -0.12266440447060645
       },
       "risk": {
-        "ann_vol": 0.18333277953448657,
-        "downside_dev": 0.14480569279275135,
-        "max_drawdown": -0.18117067863808778,
-        "max_dd_duration_days": 94,
-        "calmar": 0.41148901260194454,
-        "sortino": 0.5148260557125192,
-        "sharpe": 0.4066361937810879,
+        "ann_vol": 0.17866896317912723,
+        "downside_dev": 0.1403019005833672,
+        "max_drawdown": -0.16657805269011072,
+        "max_dd_duration_days": 110,
+        "calmar": 0.7678769598966048,
+        "sortino": 0.9116872127414544,
+        "sharpe": 0.7159130853462173,
         "bench_max_drawdown": -0.19153060955078405,
         "bench_ann_vol": 0.2077504417985633,
         "bench_sharpe": 0.7401007765976456
       },
       "relative": {
-        "beta": 0.247088651647991,
-        "alpha_ann": 0.04830801313301832,
-        "corr": 0.2799978087586093,
-        "tracking_error": 0.23546197168144073,
-        "information_ratio": -0.41657276784723823,
-        "excess_win_rate": 0.4973913043478261,
-        "excess_max_drawdown": -0.2706639548470239
+        "beta": 0.24428942087003208,
+        "alpha_ann": 0.09658418880536501,
+        "corr": 0.28405176931363807,
+        "tracking_error": 0.2323696654861131,
+        "information_ratio": -0.2298033513087255,
+        "excess_win_rate": 0.5078260869565218,
+        "excess_max_drawdown": -0.20472740125364397
       },
       "trading": {
-        "n_buys": 354,
-        "n_sells": 329,
-        "n_round_trips": 329,
-        "win_rate": 0.5379939209726444,
-        "avg_win": 3655.544396905595,
-        "avg_loss": -2749.3583045454584,
-        "payoff_ratio": 1.3295991253166084,
-        "profit_factor": 1.5482831919805242,
-        "avg_hold_days": 41.18541033434651,
+        "n_buys": 367,
+        "n_sells": 342,
+        "n_round_trips": 342,
+        "win_rate": 0.564327485380117,
+        "avg_win": 4060.1809244362717,
+        "avg_loss": -2717.9631141480377,
+        "payoff_ratio": 1.4938322390401388,
+        "profit_factor": 1.9349639069446092,
+        "avg_hold_days": 39.69298245614035,
         "median_hold_days": 25.0,
-        "turnover_ann": 11.226649408218552,
-        "avg_n_positions": 24.843478260869563,
+        "turnover_ann": 11.672122579821092,
+        "avg_n_positions": 24.869565217391305,
         "max_n_positions": 25,
-        "avg_cash_ratio": 0.05031397854430506,
-        "exposure_avg": 0.9496860214556949
+        "avg_cash_ratio": 0.058782179115222745,
+        "exposure_avg": 0.9412178208847771
       },
       "meta": {
         "start": "2024-01-02",
@@ -465,299 +1204,299 @@
       "yearly": [
         {
           "year": 2024,
-          "strategy": 0.09507841782542426,
+          "strategy": 0.1600993792704004,
           "benchmark": 0.16624561578421448,
-          "excess": -0.07116719795879023
+          "excess": -0.006146236513814074
         },
         {
           "year": 2025,
-          "strategy": 0.05733304543425599,
+          "strategy": 0.10746378011359958,
           "benchmark": 0.16532305038414163,
-          "excess": -0.10799000494988564
+          "excess": -0.05785927027054205
         },
         {
           "year": 2026,
-          "strategy": 0.04354577628848211,
+          "strategy": 0.052457752386813716,
           "benchmark": 0.03486829106964873,
-          "excess": 0.00867748521883338
+          "excess": 0.01758946131716499
         }
       ],
       "nav_monthly": [
         {
           "date": "2024-01-31",
-          "strategy": 0.916482626216652,
+          "strategy": 0.918014950981464,
           "benchmark": 0.9431667700055258,
-          "excess": 0.9707015138116026,
-          "equity": 916482.626216652
+          "excess": 0.9722451117941899,
+          "equity": 918014.950981464
         },
         {
           "date": "2024-02-29",
-          "strategy": 1.013144700484532,
+          "strategy": 1.034831440218404,
           "benchmark": 1.0033943633837914,
-          "excess": 1.0075657938435947,
-          "equity": 1013144.700484532
+          "excess": 1.0293097257867183,
+          "equity": 1034831.440218404
         },
         {
           "date": "2024-03-31",
-          "strategy": 1.02698140194008,
+          "strategy": 1.0486754729436762,
           "benchmark": 1.0264470232396274,
-          "excess": 0.996757258171676,
-          "equity": 1026981.4019400801
+          "excess": 1.0179526188259373,
+          "equity": 1048675.4729436762
         },
         {
           "date": "2024-04-30",
-          "strategy": 1.0482377697722922,
+          "strategy": 1.0674868510049722,
           "benchmark": 1.056326643878805,
-          "excess": 0.9869844411553993,
-          "equity": 1048237.7697722921
+          "excess": 1.004997326925622,
+          "equity": 1067486.8510049721
         },
         {
           "date": "2024-05-31",
-          "strategy": 1.039798366618404,
+          "strategy": 1.0587320684617,
           "benchmark": 1.0506531245479775,
-          "excess": 0.9835682360357898,
-          "equity": 1039798.3666184042
+          "excess": 1.001333841293703,
+          "equity": 1058732.0684617
         },
         {
           "date": "2024-06-30",
-          "strategy": 0.9733702718161322,
+          "strategy": 0.9971639021826881,
           "benchmark": 1.005080162429773,
-          "excess": 0.9620537372207776,
-          "equity": 973370.2718161322
+          "excess": 0.9854456210023387,
+          "equity": 997163.9021826881
         },
         {
           "date": "2024-07-31",
-          "strategy": 0.9612805628762002,
+          "strategy": 0.9928759034869281,
           "benchmark": 0.9818339975934157,
-          "excess": 0.9714498315840023,
-          "equity": 961280.5628762002
+          "excess": 1.0032886486185781,
+          "equity": 992875.9034869281
         },
         {
           "date": "2024-08-31",
-          "strategy": 0.9165792736871722,
+          "strategy": 0.9520540565973342,
           "benchmark": 0.9554864995398481,
-          "excess": 0.9502507244909737,
-          "equity": 916579.2736871722
+          "excess": 0.9870235003590389,
+          "equity": 952054.0565973342
         },
         {
           "date": "2024-09-30",
-          "strategy": 1.0854246747543324,
+          "strategy": 1.1265725885327122,
           "benchmark": 1.1226941532076107,
-          "excess": 0.9547625835256365,
-          "equity": 1085424.6747543323
+          "excess": 0.9910694425632672,
+          "equity": 1126572.5885327123
         },
         {
           "date": "2024-10-31",
-          "strategy": 1.0535100579404364,
+          "strategy": 1.1065593077229523,
           "benchmark": 1.1348856674509196,
-          "excess": 0.8916668914792995,
-          "equity": 1053510.0579404363
+          "excess": 0.9363468409422201,
+          "equity": 1106559.3077229522
         },
         {
           "date": "2024-11-30",
-          "strategy": 1.0935569485044283,
+          "strategy": 1.1509598232012883,
           "benchmark": 1.1294766924856192,
-          "excess": 0.9220012821203145,
-          "equity": 1093556.9485044284
+          "excess": 0.9705450028368967,
+          "equity": 1150959.8232012882
         },
         {
           "date": "2024-12-31",
-          "strategy": 1.0950784178254243,
+          "strategy": 1.1600993792704004,
           "benchmark": 1.1662456157842145,
-          "excess": 0.8914948099148737,
-          "equity": 1095078.4178254243
+          "excess": 0.9446140914002943,
+          "equity": 1160099.3792704004
         },
         {
           "date": "2025-01-31",
-          "strategy": 1.0595766217980442,
+          "strategy": 1.1299952121329682,
           "benchmark": 1.1198649236002634,
-          "excess": 0.8966862879695492,
-          "equity": 1059576.6217980443
+          "excess": 0.9565517672397589,
+          "equity": 1129995.2121329682
         },
         {
           "date": "2025-02-28",
-          "strategy": 1.0704270046059103,
+          "strategy": 1.1508174946815484,
           "benchmark": 1.1529121886656621,
-          "excess": 0.8788894404694984,
-          "equity": 1070427.0046059103
+          "excess": 0.9452141429003927,
+          "equity": 1150817.4946815483
         },
         {
           "date": "2025-03-31",
-          "strategy": 1.0891248178736963,
+          "strategy": 1.1734873504007644,
           "benchmark": 1.1400103681311122,
-          "excess": 0.9026776652772769,
-          "equity": 1089124.8178736963
+          "excess": 0.9728595370570238,
+          "equity": 1173487.3504007643
         },
         {
           "date": "2025-04-30",
-          "strategy": 1.1119468467511362,
+          "strategy": 1.1933289695818923,
           "benchmark": 1.1020241730040756,
-          "excess": 0.9525396598153532,
-          "equity": 1111946.8467511362
+          "excess": 1.022351167179967,
+          "equity": 1193328.9695818922
         },
         {
           "date": "2025-05-31",
-          "strategy": 1.1288439202216245,
+          "strategy": 1.2245738113270523,
           "benchmark": 1.1238153438300391,
-          "excess": 0.947434537550746,
-          "equity": 1128843.9202216244
+          "excess": 1.0278948026329655,
+          "equity": 1224573.8113270523
         },
         {
           "date": "2025-06-30",
-          "strategy": 1.1026715303808203,
+          "strategy": 1.2024755544439123,
           "benchmark": 1.1441937531805735,
-          "excess": 0.9085348990025088,
-          "equity": 1102671.5303808204
+          "excess": 0.990818385660479,
+          "equity": 1202475.5544439123
         },
         {
           "date": "2025-07-31",
-          "strategy": 1.1106201113227525,
+          "strategy": 1.2168209849042044,
           "benchmark": 1.2087672991409542,
-          "excess": 0.8659624934850344,
-          "equity": 1110620.1113227524
+          "excess": 0.9488265655974563,
+          "equity": 1216820.9849042045
         },
         {
           "date": "2025-08-31",
-          "strategy": 1.1360019977976563,
+          "strategy": 1.2487740014609765,
           "benchmark": 1.300482881025898,
-          "excess": 0.8210549035788552,
-          "equity": 1136001.9977976563
+          "excess": 0.9025878074487474,
+          "equity": 1248774.0014609764
         },
         {
           "date": "2025-09-30",
-          "strategy": 1.1256966062701885,
+          "strategy": 1.2284967602899564,
           "benchmark": 1.3512948080774974,
-          "excess": 0.7805124548406308,
-          "equity": 1125696.6062701885
+          "excess": 0.8518401707336981,
+          "equity": 1228496.7602899563
         },
         {
           "date": "2025-10-31",
-          "strategy": 1.1627469001030004,
+          "strategy": 1.2800482705550704,
           "benchmark": 1.3724828446014312,
-          "excess": 0.7909335831202189,
-          "equity": 1162746.9001030005
+          "excess": 0.8709521151602785,
+          "equity": 1280048.2705550704
         },
         {
           "date": "2025-11-30",
-          "strategy": 1.1398720165870284,
+          "strategy": 1.2644625385319466,
           "benchmark": 1.3167378247425083,
-          "excess": 0.8070213001376828,
-          "equity": 1139872.0165870285
+          "excess": 0.8954655577992083,
+          "equity": 1264462.5385319465
         },
         {
           "date": "2025-12-31",
-          "strategy": 1.1292470450297605,
+          "strategy": 1.2543235858336226,
           "benchmark": 1.3590528984827914,
-          "excess": 0.7739660811832156,
-          "equity": 1129247.0450297606
+          "excess": 0.859842432748131,
+          "equity": 1254323.5858336226
         },
         {
           "date": "2026-01-31",
-          "strategy": 1.1798903892440247,
+          "strategy": 1.3160153895650826,
           "benchmark": 1.3784912472122723,
-          "excess": 0.7964352900426047,
-          "equity": 1179890.3892440246
+          "excess": 0.8884685353145266,
+          "equity": 1316015.3895650825
         },
         {
           "date": "2026-02-28",
-          "strategy": 1.2018784049642466,
+          "strategy": 1.3346748209765826,
           "benchmark": 1.3712585972540838,
-          "excess": 0.8153452739242725,
-          "equity": 1201878.4049642466
+          "excess": 0.9054982668058985,
+          "equity": 1334674.8209765826
         },
         {
           "date": "2026-03-31",
-          "strategy": 1.1927951427304064,
+          "strategy": 1.3152571134887507,
           "benchmark": 1.311024232660814,
-          "excess": 0.8453215343532015,
-          "equity": 1192795.1427304065
+          "excess": 0.9320169097613683,
+          "equity": 1315257.1134887508
         },
         {
           "date": "2026-04-30",
-          "strategy": 1.2045339441392027,
+          "strategy": 1.333754501198839,
           "benchmark": 1.407061863571457,
-          "excess": 0.7945473419477643,
-          "equity": 1204533.9441392026
+          "excess": 0.8796014150731974,
+          "equity": 1333754.501198839
         },
         {
           "date": "2026-05-31",
-          "strategy": 1.1870387483098468,
+          "strategy": 1.3324733547905667,
           "benchmark": 1.406440750526139,
-          "excess": 0.7817763251873634,
-          "equity": 1187038.7483098467
+          "excess": 0.8773355955293936,
+          "equity": 1332473.3547905667
         }
       ],
       "admission_diagnostics": {
         "annual_returns": {
-          "2024": 0.09507841782542426,
-          "2025": 0.05733304543425599,
-          "2026": 0.04354577628848211
+          "2024": 0.1600993792704004,
+          "2025": 0.10746378011359958,
+          "2026": 0.052457752386813716
         },
         "end_pending_orders": 2,
         "max_positions": 25,
-        "max_buy_adv_fraction": 0.0009134645788572593,
-        "largest_industry_abs_pnl_fraction": 0.044279182121121474,
-        "microcap_abs_pnl_fraction": 0.3389957896925855,
+        "max_buy_adv_fraction": 0.0010278248479029702,
+        "largest_industry_abs_pnl_fraction": 0.03864127330366023,
+        "microcap_abs_pnl_fraction": 0.33198566864799434,
         "dsr_evaluated": false
       }
     },
     "gbrt_historical": {
       "capital": {
         "initial_capital": 1000000.0,
-        "ending_equity": 1278185.7960336301,
-        "ending_cash": 428763.79603363026,
-        "ending_market_value": 849422.0,
-        "total_pnl": 278185.79603363015,
-        "total_return": 0.27818579603363014,
-        "total_fees": 2054.08896637,
-        "realized_pnl": 284372.62624459213,
-        "unrealized_pnl": -6186.8302109619835
+        "ending_equity": 1303046.2597351712,
+        "ending_cash": 292619.2597351712,
+        "ending_market_value": 1010427.0,
+        "total_pnl": 303046.2597351712,
+        "total_return": 0.30304625973517124,
+        "total_fees": 2570.583264829,
+        "realized_pnl": 324905.7118037741,
+        "unrealized_pnl": -21859.4520686029
       },
       "returns": {
-        "ann_return": 0.1084081675648465,
+        "ann_return": 0.11739802196376559,
         "bench_total_return": 0.4064407505261389,
         "bench_ann_return": 0.1537562633136207,
-        "excess_total": -0.12825495449250868,
-        "excess_ann": -0.07076239741857826,
-        "excess_nav_total": -0.1605536583991929
+        "excess_total": -0.10339449079096763,
+        "excess_ann": -0.06437448396166545,
+        "excess_nav_total": -0.14672700780481807
       },
       "risk": {
-        "ann_vol": 0.13881979520506113,
-        "downside_dev": 0.10275679763494087,
-        "max_drawdown": -0.1139530264357298,
-        "max_dd_duration_days": 193,
-        "calmar": 0.9513408371473957,
-        "sortino": 1.054997528727812,
-        "sharpe": 0.7809272979023537,
+        "ann_vol": 0.12895060980145742,
+        "downside_dev": 0.08907152314599233,
+        "max_drawdown": -0.07451176634783174,
+        "max_dd_duration_days": 200,
+        "calmar": 1.5755635347004737,
+        "sortino": 1.3180196971746494,
+        "sharpe": 0.9104107545091945,
         "bench_max_drawdown": -0.19153060955078405,
         "bench_ann_vol": 0.2077504417985633,
         "bench_sharpe": 0.7401007765976456
       },
       "relative": {
-        "beta": 0.21821506682401162,
-        "alpha_ann": 0.07702147280975062,
-        "corr": 0.32656925096903333,
-        "tracking_error": 0.20879355748861966,
-        "information_ratio": -0.3389108278517414,
-        "excess_win_rate": 0.49217391304347824,
-        "excess_max_drawdown": -0.31081242253738384
+        "beta": 0.1906236759334053,
+        "alpha_ann": 0.08833995440888036,
+        "corr": 0.30711101679476915,
+        "tracking_error": 0.20816766395507333,
+        "information_ratio": -0.3092434374224362,
+        "excess_win_rate": 0.49391304347826087,
+        "excess_max_drawdown": -0.30286098782490434
       },
       "trading": {
-        "n_buys": 65,
-        "n_sells": 40,
-        "n_round_trips": 40,
-        "win_rate": 0.925,
-        "avg_win": 8238.395150022488,
-        "avg_loss": -6815.998102079997,
-        "payoff_ratio": 1.2086850710108659,
-        "profit_factor": 14.90711587580068,
-        "avg_hold_days": 159.975,
-        "median_hold_days": 127.5,
-        "turnover_ann": 1.4115213923158116,
-        "avg_n_positions": 24.561739130434784,
+        "n_buys": 73,
+        "n_sells": 49,
+        "n_round_trips": 49,
+        "win_rate": 0.8775510204081632,
+        "avg_win": 8089.195851834097,
+        "avg_loss": -3821.6183041819972,
+        "payoff_ratio": 2.1166938213013293,
+        "profit_factor": 15.169639052659525,
+        "avg_hold_days": 122.6734693877551,
+        "median_hold_days": 60.0,
+        "turnover_ann": 1.7898101247896803,
+        "avg_n_positions": 24.457391304347826,
         "max_n_positions": 25,
-        "avg_cash_ratio": 0.18982658874610717,
-        "exposure_avg": 0.8101734112538929
+        "avg_cash_ratio": 0.18978736334815946,
+        "exposure_avg": 0.8102126366518405
       },
       "meta": {
         "start": "2024-01-02",
@@ -770,299 +1509,299 @@
       "yearly": [
         {
           "year": 2024,
-          "strategy": 0.30277041661765614,
+          "strategy": 0.31854109858315205,
           "benchmark": 0.16624561578421448,
-          "excess": 0.13652480083344165
+          "excess": 0.15229548279893756
         },
         {
           "year": 2025,
-          "strategy": 0.05761263348131718,
+          "strategy": 0.05102055154893326,
           "benchmark": 0.16532305038414163,
-          "excess": -0.10771041690282446
+          "excess": -0.11430249883520838
         },
         {
           "year": 2026,
-          "strategy": -0.048159647104598746,
+          "strategy": -0.03832096807147989,
           "benchmark": 0.03486829106964873,
-          "excess": -0.08302793817424747
+          "excess": -0.07318925914112862
         }
       ],
       "nav_monthly": [
         {
           "date": "2024-01-31",
-          "strategy": 1.035384387949139,
+          "strategy": 1.0407828099448742,
           "benchmark": 0.9431667700055258,
-          "excess": 1.0958021916869825,
-          "equity": 1035384.387949139
+          "excess": 1.1015255351455988,
+          "equity": 1040782.8099448741
         },
         {
           "date": "2024-02-29",
-          "strategy": 1.102388076904291,
+          "strategy": 1.099397235114236,
           "benchmark": 1.0033943633837914,
-          "excess": 1.0928364306663885,
-          "equity": 1102388.076904291
+          "excess": 1.0899992010510318,
+          "equity": 1099397.2351142361
         },
         {
           "date": "2024-03-31",
-          "strategy": 1.0993905301914542,
+          "strategy": 1.090175351856524,
           "benchmark": 1.0264470232396274,
-          "excess": 1.064014616732435,
-          "equity": 1099390.530191454
+          "excess": 1.0551493853369451,
+          "equity": 1090175.3518565241
         },
         {
           "date": "2024-04-30",
-          "strategy": 1.137305904509986,
+          "strategy": 1.1252376506601083,
           "benchmark": 1.056326643878805,
-          "excess": 1.0679504418309036,
-          "equity": 1137305.904509986
+          "excess": 1.0565427953299638,
+          "equity": 1125237.6506601083
         },
         {
           "date": "2024-05-31",
-          "strategy": 1.1426720638304242,
+          "strategy": 1.1404162244535503,
           "benchmark": 1.0506531245479775,
-          "excess": 1.0781000563468255,
-          "equity": 1142672.063830424
+          "excess": 1.0758876990496498,
+          "equity": 1140416.2244535503
         },
         {
           "date": "2024-06-30",
-          "strategy": 1.12162851940388,
+          "strategy": 1.1234160330334402,
           "benchmark": 1.005080162429773,
-          "excess": 1.1056043229772319,
-          "equity": 1121628.51940388
+          "excess": 1.107206687661919,
+          "equity": 1123416.0330334401
         },
         {
           "date": "2024-07-31",
-          "strategy": 1.143613591062752,
+          "strategy": 1.1403023363318752,
           "benchmark": 0.9818339975934157,
-          "excess": 1.1528018536930436,
-          "equity": 1143613.591062752
+          "excess": 1.149180534747324,
+          "equity": 1140302.336331875
         },
         {
           "date": "2024-08-31",
-          "strategy": 1.1102366983733,
+          "strategy": 1.123198745822427,
           "benchmark": 0.9554864995398481,
-          "excess": 1.1483198472606615,
-          "equity": 1110236.6983733
+          "excess": 1.1614402026536568,
+          "equity": 1123198.745822427
         },
         {
           "date": "2024-09-30",
-          "strategy": 1.306282451981036,
+          "strategy": 1.2932213741943281,
           "benchmark": 1.1226941532076107,
-          "excess": 1.1451111279255988,
-          "equity": 1306282.451981036
+          "excess": 1.1323596033698442,
+          "equity": 1293221.3741943282
         },
         {
           "date": "2024-10-31",
-          "strategy": 1.26149795619262,
+          "strategy": 1.2425099469609981,
           "benchmark": 1.1348856674509196,
-          "excess": 1.0666085683867834,
-          "equity": 1261497.95619262
+          "excess": 1.047538620505937,
+          "equity": 1242509.9469609982
         },
         {
           "date": "2024-11-30",
-          "strategy": 1.275092437111516,
+          "strategy": 1.269224098583152,
           "benchmark": 1.1294766924856192,
-          "excess": 1.0736609632848486,
-          "equity": 1275092.437111516
+          "excess": 1.0657339876289174,
+          "equity": 1269224.098583152
         },
         {
           "date": "2024-12-31",
-          "strategy": 1.3027704166176561,
+          "strategy": 1.318541098583152,
           "benchmark": 1.1662456157842145,
-          "excess": 1.059832166003087,
-          "equity": 1302770.4166176561
+          "excess": 1.0695059403744782,
+          "equity": 1318541.098583152
         },
         {
           "date": "2025-01-31",
-          "strategy": 1.269885416617656,
+          "strategy": 1.282110098583152,
           "benchmark": 1.1198649236002634,
-          "excess": 1.0741422058866115,
-          "equity": 1269885.4166176561
+          "excess": 1.0811856283568797,
+          "equity": 1282110.098583152
         },
         {
           "date": "2025-02-28",
-          "strategy": 1.2495954166176562,
+          "strategy": 1.2795330985831521,
           "benchmark": 1.1529121886656621,
-          "excess": 1.025412748777274,
-          "equity": 1249595.4166176561
+          "excess": 1.0467911171171578,
+          "equity": 1279533.098583152
         },
         {
           "date": "2025-03-31",
-          "strategy": 1.2718304166176562,
+          "strategy": 1.298516098583152,
           "benchmark": 1.1400103681311122,
-          "excess": 1.0535109108988432,
-          "equity": 1271830.4166176561
+          "excess": 1.0722863422855158,
+          "equity": 1298516.098583152
         },
         {
           "date": "2025-04-30",
-          "strategy": 1.245943555222542,
+          "strategy": 1.273895098583152,
           "benchmark": 1.1020241730040756,
-          "excess": 1.0656113476335776,
-          "equity": 1245943.555222542
+          "excess": 1.0854479071276715,
+          "equity": 1273895.098583152
         },
         {
           "date": "2025-05-31",
-          "strategy": 1.296145365185842,
+          "strategy": 1.3166280477837182,
           "benchmark": 1.1238153438300391,
-          "excess": 1.0861440967354143,
-          "equity": 1296145.365185842
+          "excess": 1.0992791914210922,
+          "equity": 1316628.0477837182
         },
         {
           "date": "2025-06-30",
-          "strategy": 1.302660365185842,
+          "strategy": 1.3280900477837183,
           "benchmark": 1.1441937531805735,
-          "excess": 1.0714829311523417,
-          "equity": 1302660.365185842
+          "excess": 1.088451973034118,
+          "equity": 1328090.0477837182
         },
         {
           "date": "2025-07-31",
-          "strategy": 1.336233832787757,
+          "strategy": 1.3391098575990643,
           "benchmark": 1.2087672991409542,
-          "excess": 1.0399857740208345,
-          "equity": 1336233.832787757
+          "excess": 1.0384770673742945,
+          "equity": 1339109.8575990642
         },
         {
           "date": "2025-08-31",
-          "strategy": 1.351031539483197,
+          "strategy": 1.3378576513357623,
           "benchmark": 1.300482881025898,
-          "excess": 0.9746727986919532,
-          "equity": 1351031.539483197
+          "excess": 0.9617919375275558,
+          "equity": 1337857.6513357623
         },
         {
           "date": "2025-09-30",
-          "strategy": 1.2981685041360191,
+          "strategy": 1.2808347862309462,
           "benchmark": 1.3512948080774974,
-          "excess": 0.898511143991755,
-          "equity": 1298168.5041360192
+          "excess": 0.8833709884638711,
+          "equity": 1280834.7862309462
         },
         {
           "date": "2025-10-31",
-          "strategy": 1.3250393312168574,
+          "strategy": 1.3237241920776792,
           "benchmark": 1.3724828446014312,
-          "excess": 0.8998460046240109,
-          "equity": 1325039.3312168573
+          "excess": 0.8958782714906345,
+          "equity": 1323724.1920776793
         },
         {
           "date": "2025-11-30",
-          "strategy": 1.3222983312168572,
+          "strategy": 1.3222191920776794,
           "benchmark": 1.3167378247425083,
-          "excess": 0.9343434554363979,
-          "equity": 1322298.3312168573
+          "excess": 0.9312165528692519,
+          "equity": 1322219.1920776793
         },
         {
           "date": "2025-12-31",
-          "strategy": 1.3383193312168573,
+          "strategy": 1.351705022713383,
           "benchmark": 1.3590528984827914,
-          "excess": 0.915490402399463,
-          "equity": 1338319.3312168573
+          "excess": 0.921641439033407,
+          "equity": 1351705.0227133832
         },
         {
           "date": "2026-01-31",
-          "strategy": 1.2958309136611812,
+          "strategy": 1.3181606043759273,
           "benchmark": 1.3784912472122723,
-          "excess": 0.8730235506507981,
-          "equity": 1295830.9136611812
+          "excess": 0.8852082079584195,
+          "equity": 1318160.6043759272
         },
         {
           "date": "2026-02-28",
-          "strategy": 1.3115959136611812,
+          "strategy": 1.3246796043759272,
           "benchmark": 1.3712585972540838,
-          "excess": 0.8879295531726663,
-          "equity": 1311595.9136611812
+          "excess": 0.8938918240104353,
+          "equity": 1324679.6043759272
         },
         {
           "date": "2026-03-31",
-          "strategy": 1.2963023615331613,
+          "strategy": 1.3164372682606034,
           "benchmark": 1.311024232660814,
-          "excess": 0.9163839910749421,
-          "equity": 1296302.3615331613
+          "excess": 0.9278626958179232,
+          "equity": 1316437.2682606033
         },
         {
           "date": "2026-04-30",
-          "strategy": 1.2975463615331613,
+          "strategy": 1.3315232682606033,
           "benchmark": 1.407061863571457,
-          "excess": 0.8535017311362771,
-          "equity": 1297546.3615331613
+          "excess": 0.8733135813534414,
+          "equity": 1331523.2682606033
         },
         {
           "date": "2026-05-31",
-          "strategy": 1.2781857960336303,
+          "strategy": 1.3030462597351713,
           "benchmark": 1.406440750526139,
-          "excess": 0.8394463416008071,
-          "equity": 1278185.7960336301
+          "excess": 0.8532729921951819,
+          "equity": 1303046.2597351712
         }
       ],
       "admission_diagnostics": {
         "annual_returns": {
-          "2024": 0.30277041661765614,
-          "2025": 0.05761263348131718,
-          "2026": -0.048159647104598746
+          "2024": 0.31854109858315205,
+          "2025": 0.05102055154893326,
+          "2026": -0.03832096807147989
         },
         "end_pending_orders": 0,
         "max_positions": 25,
-        "max_buy_adv_fraction": 0.0007378152372135705,
-        "largest_industry_abs_pnl_fraction": 0.1571791437277319,
-        "microcap_abs_pnl_fraction": 0.035306633001853875,
+        "max_buy_adv_fraction": 0.0005866025375918988,
+        "largest_industry_abs_pnl_fraction": 0.25220483408360095,
+        "microcap_abs_pnl_fraction": 0.0,
         "dsr_evaluated": false
       }
     },
     "ensemble_historical": {
       "capital": {
         "initial_capital": 1000000.0,
-        "ending_equity": 1114654.1111795763,
-        "ending_cash": 153194.11117957634,
-        "ending_market_value": 961460.0,
-        "total_pnl": 114654.11117957626,
-        "total_return": 0.11465411117957626,
-        "total_fees": 5514.6906204239995,
-        "realized_pnl": 176483.78639518423,
-        "unrealized_pnl": -61829.675215607975
+        "ending_equity": 1136839.1916825902,
+        "ending_cash": 456101.1916825903,
+        "ending_market_value": 680738.0,
+        "total_pnl": 136839.19168259017,
+        "total_return": 0.13683919168259018,
+        "total_fees": 5387.67871741,
+        "realized_pnl": 185443.1221829462,
+        "unrealized_pnl": -48603.930500356015
       },
       "returns": {
-        "ann_return": 0.046569326125820876,
+        "ann_return": 0.05525433527177559,
         "bench_total_return": 0.4064407505261389,
         "bench_ann_return": 0.1537562633136207,
-        "excess_total": -0.2917866393465627,
-        "excess_ann": -0.12326403663834629,
-        "excess_nav_total": -0.2692629883475254
+        "excess_total": -0.26960155884354875,
+        "excess_ann": -0.11617362868427283,
+        "excess_nav_total": -0.25509139059647457
       },
       "risk": {
-        "ann_vol": 0.13821282582817515,
-        "downside_dev": 0.10527887772768012,
-        "max_drawdown": -0.16419162175914093,
+        "ann_vol": 0.14077777320871793,
+        "downside_dev": 0.10766215782925603,
+        "max_drawdown": -0.16142694123251478,
         "max_dd_duration_days": 127,
-        "calmar": 0.28362790760502526,
-        "sortino": 0.4423425394624698,
-        "sharpe": 0.3369392518152795,
+        "calmar": 0.34228694943918203,
+        "sortino": 0.5132196529016699,
+        "sharpe": 0.3924933177473634,
         "bench_max_drawdown": -0.19153060955078405,
         "bench_ann_vol": 0.2077504417985633,
         "bench_sharpe": 0.7401007765976456
       },
       "relative": {
-        "beta": 0.20287636822214106,
-        "alpha_ann": 0.02182962042587023,
-        "corr": 0.3049474958354109,
-        "tracking_error": 0.21154347861234518,
-        "information_ratio": -0.5826888989767841,
-        "excess_win_rate": 0.4817391304347826,
-        "excess_max_drawdown": -0.3207439265435682
+        "beta": 0.19765478479881488,
+        "alpha_ann": 0.031336820839444925,
+        "corr": 0.29168573937217845,
+        "tracking_error": 0.21428245191903358,
+        "information_ratio": -0.5421518544512871,
+        "excess_win_rate": 0.47130434782608693,
+        "excess_max_drawdown": -0.3104055930566554
       },
       "trading": {
-        "n_buys": 147,
-        "n_sells": 122,
-        "n_round_trips": 122,
-        "win_rate": 0.6065573770491803,
-        "avg_win": 4283.824234692082,
-        "avg_loss": -2927.483478583957,
-        "payoff_ratio": 1.4633128644552407,
-        "profit_factor": 2.255940666035163,
-        "avg_hold_days": 75.59016393442623,
-        "median_hold_days": 52.5,
-        "turnover_ann": 4.280245769581606,
-        "avg_n_positions": 23.63826086956522,
+        "n_buys": 146,
+        "n_sells": 121,
+        "n_round_trips": 121,
+        "win_rate": 0.6363636363636364,
+        "avg_win": 4417.372357562158,
+        "avg_loss": -3515.7852124849974,
+        "payoff_ratio": 1.256439768241675,
+        "profit_factor": 2.1987695944229313,
+        "avg_hold_days": 78.32231404958678,
+        "median_hold_days": 45.0,
+        "turnover_ann": 4.048479087086748,
+        "avg_n_positions": 24.003478260869564,
         "max_n_positions": 25,
-        "avg_cash_ratio": 0.17039793536176062,
-        "exposure_avg": 0.8296020646382394
+        "avg_cash_ratio": 0.22116431793410085,
+        "exposure_avg": 0.7788356820658991
       },
       "meta": {
         "start": "2024-01-02",
@@ -1075,239 +1814,239 @@
       "yearly": [
         {
           "year": 2024,
-          "strategy": 0.12124135270057401,
+          "strategy": 0.133129963495362,
           "benchmark": 0.16624561578421448,
-          "excess": -0.04500426308364047
+          "excess": -0.03311565228885249
         },
         {
           "year": 2025,
-          "strategy": 0.06310795799799562,
+          "strategy": 0.06102298710166809,
           "benchmark": 0.16532305038414163,
-          "excess": -0.10221509238614601
+          "excess": -0.10430006328247354
         },
         {
           "year": 2026,
-          "strategy": -0.05033322632707726,
+          "strategy": -0.036543651269844046,
           "benchmark": 0.03486829106964873,
-          "excess": -0.08520151739672599
+          "excess": -0.07141194233949277
         }
       ],
       "nav_monthly": [
         {
           "date": "2024-01-31",
-          "strategy": 0.9664580689476361,
+          "strategy": 0.9722930431900881,
           "benchmark": 0.9431667700055258,
-          "excess": 1.0230452654980362,
-          "equity": 966458.068947636
+          "excess": 1.0292042092207625,
+          "equity": 972293.0431900881
         },
         {
           "date": "2024-02-29",
-          "strategy": 1.029061284813644,
+          "strategy": 1.0347961179338823,
           "benchmark": 1.0033943633837914,
-          "excess": 1.0217876365368217,
-          "equity": 1029061.284813644
+          "excess": 1.0274902763744502,
+          "equity": 1034796.1179338822
         },
         {
           "date": "2024-03-31",
-          "strategy": 1.014711540915802,
+          "strategy": 1.0208661278939801,
           "benchmark": 1.0264470232396274,
-          "excess": 0.9836477347423638,
-          "equity": 1014711.540915802
+          "excess": 0.989552771950239,
+          "equity": 1020866.1278939801
         },
         {
           "date": "2024-04-30",
-          "strategy": 1.035157319071482,
+          "strategy": 1.04497659805446,
           "benchmark": 1.056326643878805,
-          "excess": 0.9736244259376525,
-          "equity": 1035157.3190714819
+          "excess": 0.9827524817981032,
+          "equity": 1044976.5980544601
         },
         {
           "date": "2024-05-31",
-          "strategy": 1.060090976279248,
+          "strategy": 1.0791482983349483,
           "benchmark": 1.0506531245479775,
-          "excess": 1.0018277192516207,
-          "equity": 1060090.976279248
+          "excess": 1.0196979760474283,
+          "equity": 1079148.2983349483
         },
         {
           "date": "2024-06-30",
-          "strategy": 1.019712223310016,
+          "strategy": 1.0384662703356042,
           "benchmark": 1.005080162429773,
-          "excess": 1.0068063417153925,
-          "equity": 1019712.223310016
+          "excess": 1.0251830429822775,
+          "equity": 1038466.2703356042
         },
         {
           "date": "2024-07-31",
-          "strategy": 0.9957719937163121,
+          "strategy": 1.0165955285359671,
           "benchmark": 0.9818339975934157,
-          "excess": 1.0053520584701292,
-          "equity": 995771.9937163121
+          "excess": 1.0262168825339684,
+          "equity": 1016595.5285359672
         },
         {
           "date": "2024-08-31",
-          "strategy": 0.9467011672306522,
+          "strategy": 0.9665213292904652,
           "benchmark": 0.9554864995398481,
-          "excess": 0.9809818090290848,
-          "equity": 946701.1672306522
+          "excess": 1.0013920498915039,
+          "equity": 966521.3292904652
         },
         {
           "date": "2024-09-30",
-          "strategy": 1.07753815530028,
+          "strategy": 1.1059470000355291,
           "benchmark": 1.1226941532076107,
-          "excess": 0.9453354034962739,
-          "equity": 1077538.15530028
+          "excess": 0.9706281268953637,
+          "equity": 1105947.0000355293
         },
         {
           "date": "2024-10-31",
-          "strategy": 1.053602513387178,
+          "strategy": 1.0738367596775442,
           "benchmark": 1.1348856674509196,
-          "excess": 0.8882636072639809,
-          "equity": 1053602.513387178
+          "excess": 0.9061174220973753,
+          "equity": 1073836.7596775442
         },
         {
           "date": "2024-11-30",
-          "strategy": 1.092583660744242,
+          "strategy": 1.1090109523055582,
           "benchmark": 1.1294766924856192,
-          "excess": 0.9174934666542166,
-          "equity": 1092583.6607442421
+          "excess": 0.9319545914275114,
+          "equity": 1109010.9523055581
         },
         {
           "date": "2024-12-31",
-          "strategy": 1.121241352700574,
+          "strategy": 1.133129963495362,
           "benchmark": 1.1662456157842145,
-          "excess": 0.9092102343672936,
-          "equity": 1121241.352700574
+          "excess": 0.9195399246663459,
+          "equity": 1133129.963495362
         },
         {
           "date": "2025-01-31",
-          "strategy": 1.0980125424045344,
+          "strategy": 1.106029515125322,
           "benchmark": 1.1198649236002634,
-          "excess": 0.925588163842504,
-          "equity": 1098012.5424045343
+          "excess": 0.9330616912189711,
+          "equity": 1106029.5151253222
         },
         {
           "date": "2025-02-28",
-          "strategy": 1.078245296059362,
+          "strategy": 1.083343586226191,
           "benchmark": 1.1529121886656621,
-          "excess": 0.8817288050777523,
-          "equity": 1078245.2960593621
+          "excess": 0.8865748535702308,
+          "equity": 1083343.5862261911
         },
         {
           "date": "2025-03-31",
-          "strategy": 1.103536253727346,
+          "strategy": 1.1128487943881273,
           "benchmark": 1.1400103681311122,
-          "excess": 0.9108963160523637,
-          "equity": 1103536.2537273462
+          "excess": 0.9193004055698104,
+          "equity": 1112848.7943881273
         },
         {
           "date": "2025-04-30",
-          "strategy": 1.0889827964313983,
+          "strategy": 1.1053517992417994,
           "benchmark": 1.1020241730040756,
-          "excess": 0.928076217994566,
-          "equity": 1088982.7964313983
+          "excess": 0.9428717917492834,
+          "equity": 1105351.7992417994
         },
         {
           "date": "2025-05-31",
-          "strategy": 1.1226434808380064,
+          "strategy": 1.1443658087474975,
           "benchmark": 1.1238153438300391,
-          "excess": 0.9375022573433376,
-          "equity": 1122643.4808380064
+          "excess": 0.9564917815373706,
+          "equity": 1144365.8087474974
         },
         {
           "date": "2025-06-30",
-          "strategy": 1.1226058426067904,
+          "strategy": 1.1469572930862983,
           "benchmark": 1.1441937531805735,
-          "excess": 0.9201985591035616,
-          "equity": 1122605.8426067904
+          "excess": 0.9410479022167564,
+          "equity": 1146957.2930862983
         },
         {
           "date": "2025-07-31",
-          "strategy": 1.1452904365828582,
+          "strategy": 1.1649401327839093,
           "benchmark": 1.2087672991409542,
-          "excess": 0.8883742975466493,
-          "equity": 1145290.4365828582
+          "excess": 0.904426059271075,
+          "equity": 1164940.1327839093
         },
         {
           "date": "2025-08-31",
-          "strategy": 1.1587887937989485,
+          "strategy": 1.1802481673367393,
           "benchmark": 1.300482881025898,
-          "excess": 0.8332640562974606,
-          "equity": 1158788.7937989484
+          "excess": 0.8494611035997975,
+          "equity": 1180248.1673367394
         },
         {
           "date": "2025-09-30",
-          "strategy": 1.1216547840930624,
+          "strategy": 1.1475701900995374,
           "benchmark": 1.3512948080774974,
-          "excess": 0.7740162920532367,
-          "equity": 1121654.7840930624
+          "excess": 0.7924940854734097,
+          "equity": 1147570.1900995374
         },
         {
           "date": "2025-10-31",
-          "strategy": 1.1734019956522985,
+          "strategy": 1.1837089063370452,
           "benchmark": 1.3724828446014312,
-          "excess": 0.7946537546310298,
-          "equity": 1173401.9956522984
+          "excess": 0.8020783078516769,
+          "equity": 1183708.9063370451
         },
         {
           "date": "2025-11-30",
-          "strategy": 1.1621417737933744,
+          "strategy": 1.176388975258445,
           "benchmark": 1.3167378247425083,
-          "excess": 0.8190776862610505,
-          "equity": 1162141.7737933744
+          "excess": 0.8293598758657513,
+          "equity": 1176388.9752584451
         },
         {
           "date": "2025-12-31",
-          "strategy": 1.1672408205506444,
+          "strategy": 1.1772092095489892,
           "benchmark": 1.3590528984827914,
-          "excess": 0.7964265746073369,
-          "equity": 1167240.8205506443
+          "excess": 0.8034496833529007,
+          "equity": 1177209.2095489893
         },
         {
           "date": "2026-01-31",
-          "strategy": 1.1683022833059444,
+          "strategy": 1.1704592095489894,
           "benchmark": 1.3784912472122723,
-          "excess": 0.7851200978810966,
-          "equity": 1168302.2833059444
+          "excess": 0.7867260771411742,
+          "equity": 1170459.2095489893
         },
         {
           "date": "2026-02-28",
-          "strategy": 1.1822203753081464,
+          "strategy": 1.1925361329675392,
           "benchmark": 1.3712585972540838,
-          "excess": 0.7983453228756435,
-          "equity": 1182220.3753081465
+          "excess": 0.8054016546008873,
+          "equity": 1192536.1329675391
         },
         {
           "date": "2026-03-31",
-          "strategy": 1.1623880306999743,
+          "strategy": 1.1714989689757311,
           "benchmark": 1.311024232660814,
-          "excess": 0.8200563406753018,
-          "equity": 1162388.0306999744
+          "excess": 0.8262849938297736,
+          "equity": 1171498.9689757312
         },
         {
           "date": "2026-04-30",
-          "strategy": 1.1445845839910362,
+          "strategy": 1.1527510013215752,
           "benchmark": 1.407061863571457,
-          "excess": 0.751410322846938,
-          "equity": 1144584.5839910363
+          "excess": 0.7564635501954736,
+          "equity": 1152751.0013215751
         },
         {
           "date": "2026-05-31",
-          "strategy": 1.1146541111795762,
+          "strategy": 1.1368391916825902,
           "benchmark": 1.406440750526139,
-          "excess": 0.7307370116524746,
-          "equity": 1114654.1111795763
+          "excess": 0.7449086094035254,
+          "equity": 1136839.1916825902
         }
       ],
       "admission_diagnostics": {
         "annual_returns": {
-          "2024": 0.12124135270057401,
-          "2025": 0.06310795799799562,
-          "2026": -0.05033322632707726
+          "2024": 0.133129963495362,
+          "2025": 0.06102298710166809,
+          "2026": -0.036543651269844046
         },
         "end_pending_orders": 0,
         "max_positions": 25,
-        "max_buy_adv_fraction": 0.0009058877717143288,
-        "largest_industry_abs_pnl_fraction": 0.06971353555959056,
-        "microcap_abs_pnl_fraction": 0.24286754774825933,
+        "max_buy_adv_fraction": 0.0008640317036374661,
+        "largest_industry_abs_pnl_fraction": 0.08031270385761106,
+        "microcap_abs_pnl_fraction": 0.2395656638519551,
         "dsr_evaluated": false
       }
     },
@@ -1619,60 +2358,60 @@
     "elastic_flat_20bp_roundtrip": {
       "capital": {
         "initial_capital": 1000000.0,
-        "ending_equity": 1194710.595,
-        "ending_cash": 12483.595000000008,
-        "ending_market_value": 1182227.0,
-        "total_pnl": 194710.59499999997,
-        "total_return": 0.19471059499999996,
-        "total_fees": 29471.405,
-        "realized_pnl": 239165.05099999998,
-        "unrealized_pnl": -44454.456000000006
+        "ending_equity": 1346463.536,
+        "ending_cash": 29879.536000000022,
+        "ending_market_value": 1316584.0,
+        "total_pnl": 346463.5360000001,
+        "total_return": 0.34646353600000007,
+        "total_fees": 32818.464,
+        "realized_pnl": 393881.175,
+        "unrealized_pnl": -47417.63899999991
       },
       "returns": {
-        "ann_return": 0.07745658088415253,
+        "ann_return": 0.13286245307570432,
         "bench_total_return": 0.4064407505261389,
         "bench_ann_return": 0.1537562633136207,
-        "excess_total": -0.21173015552613905,
-        "excess_ann": -0.09555704479591443,
-        "excess_nav_total": -0.2129839394901114
+        "excess_total": -0.0599772145261388,
+        "excess_ann": -0.04914240292078298,
+        "excess_nav_total": -0.11322654068285498
       },
       "risk": {
-        "ann_vol": 0.18492439543203512,
-        "downside_dev": 0.1459397388958269,
-        "max_drawdown": -0.18137446384885803,
-        "max_dd_duration_days": 93,
-        "calmar": 0.42705339682601745,
-        "sortino": 0.5307435895814623,
-        "sharpe": 0.41885539602923827,
+        "ann_vol": 0.1802801865142831,
+        "downside_dev": 0.14158327681066124,
+        "max_drawdown": -0.1667155383375366,
+        "max_dd_duration_days": 110,
+        "calmar": 0.7969410314154854,
+        "sortino": 0.9384049872880168,
+        "sharpe": 0.736977566113057,
         "bench_max_drawdown": -0.19153060955078405,
         "bench_ann_vol": 0.2077504417985633,
         "bench_sharpe": 0.7401007765976456
       },
       "relative": {
-        "beta": 0.24927184463184945,
-        "alpha_ann": 0.05095506281125413,
-        "corr": 0.2800405848521077,
-        "tracking_error": 0.23630490851732705,
-        "information_ratio": -0.40438027883330113,
-        "excess_win_rate": 0.4956521739130435,
-        "excess_max_drawdown": -0.26700065185451705
+        "beta": 0.24661541021362654,
+        "alpha_ann": 0.1008890916394183,
+        "corr": 0.2841935179724016,
+        "tracking_error": 0.23318067702836928,
+        "information_ratio": -0.2107481783956061,
+        "excess_win_rate": 0.5078260869565218,
+        "excess_max_drawdown": -0.199114680200406
       },
       "trading": {
-        "n_buys": 354,
-        "n_sells": 329,
-        "n_round_trips": 329,
-        "win_rate": 0.547112462006079,
-        "avg_win": 3662.685422222222,
-        "avg_loss": -2819.5860738255037,
-        "payoff_ratio": 1.2990152903021095,
-        "profit_factor": 1.569280216472347,
-        "avg_hold_days": 41.18541033434651,
+        "n_buys": 367,
+        "n_sells": 342,
+        "n_round_trips": 342,
+        "win_rate": 0.5789473684210527,
+        "avg_win": 4043.721272727272,
+        "avg_loss": -2824.8308125,
+        "payoff_ratio": 1.4314914913960965,
+        "profit_factor": 1.968300800669633,
+        "avg_hold_days": 39.69298245614035,
         "median_hold_days": 25.0,
-        "turnover_ann": 11.372793120475711,
-        "avg_n_positions": 24.843478260869563,
+        "turnover_ann": 11.828495443487192,
+        "avg_n_positions": 24.869565217391305,
         "max_n_positions": 25,
-        "avg_cash_ratio": 0.04032131763052059,
-        "exposure_avg": 0.9596786823694793
+        "avg_cash_ratio": 0.04891101101661089,
+        "exposure_avg": 0.9510889889833889
       },
       "meta": {
         "start": "2024-01-02",
@@ -1685,299 +2424,299 @@
       "yearly": [
         {
           "year": 2024,
-          "strategy": 0.098390902,
+          "strategy": 0.16494128399999997,
           "benchmark": 0.16624561578421448,
-          "excess": -0.06785471378421448
+          "excess": -0.0013043317842145186
         },
         {
           "year": 2025,
-          "strategy": 0.06017098978133517,
+          "strategy": 0.11145533443890754,
           "benchmark": 0.16532305038414163,
-          "excess": -0.10515206060280646
+          "excess": -0.053867715945234096
         },
         {
           "year": 2026,
-          "strategy": 0.04431493970128586,
+          "strategy": 0.055227621140466754,
           "benchmark": 0.03486829106964873,
-          "excess": 0.009446648631637133
+          "excess": 0.020359330070818027
         }
       ],
       "nav_monthly": [
         {
           "date": "2024-01-31",
-          "strategy": 0.916632576,
+          "strategy": 0.918054948,
           "benchmark": 0.9431667700055258,
-          "excess": 0.9708662613031405,
-          "equity": 916632.576
+          "excess": 0.9722936738884178,
+          "equity": 918054.948
         },
         {
           "date": "2024-02-29",
-          "strategy": 1.01376866,
+          "strategy": 1.035475056,
           "benchmark": 1.0033943633837914,
-          "excess": 1.0081970594729086,
-          "equity": 1013768.66
+          "excess": 1.0299693320441154,
+          "equity": 1035475.056
         },
         {
           "date": "2024-03-31",
-          "strategy": 1.02782473,
+          "strategy": 1.0495903819999999,
           "benchmark": 1.0264470232396274,
-          "excess": 0.9975875905519099,
-          "equity": 1027824.73
+          "excess": 1.0188595519679533,
+          "equity": 1049590.382
         },
         {
           "date": "2024-04-30",
-          "strategy": 1.0492095689999998,
+          "strategy": 1.068443298,
           "benchmark": 1.056326643878805,
-          "excess": 0.9879110322769966,
-          "equity": 1049209.569
+          "excess": 1.0059149730467196,
+          "equity": 1068443.298
         },
         {
           "date": "2024-05-31",
-          "strategy": 1.040874666,
+          "strategy": 1.059708402,
           "benchmark": 1.0506531245479775,
-          "excess": 0.9845976807305283,
-          "equity": 1040874.666
+          "excess": 1.002274460043107,
+          "equity": 1059708.402
         },
         {
           "date": "2024-06-30",
-          "strategy": 0.974547177,
+          "strategy": 0.997906989,
           "benchmark": 1.005080162429773,
-          "excess": 0.963227527725707,
-          "equity": 974547.177
+          "excess": 0.986197689275289,
+          "equity": 997906.989
         },
         {
           "date": "2024-07-31",
-          "strategy": 0.962558452,
+          "strategy": 0.9939029100000001,
           "benchmark": 0.9818339975934157,
-          "excess": 0.9727503442035531,
-          "equity": 962558.452
+          "excess": 1.004344902840044,
+          "equity": 993902.91
         },
         {
           "date": "2024-08-31",
-          "strategy": 0.9176730949999999,
+          "strategy": 0.953386419,
           "benchmark": 0.9554864995398481,
-          "excess": 0.9513948028746276,
-          "equity": 917673.095
+          "excess": 0.9884228764613155,
+          "equity": 953386.419
         },
         {
           "date": "2024-09-30",
-          "strategy": 1.0884700930000002,
+          "strategy": 1.1300669950000002,
           "benchmark": 1.1226941532076107,
-          "excess": 0.9575241138335036,
-          "equity": 1088470.093
+          "excess": 0.9942365719785846,
+          "equity": 1130066.995
         },
         {
           "date": "2024-10-31",
-          "strategy": 1.056000442,
+          "strategy": 1.110325128,
           "benchmark": 1.1348856674509196,
-          "excess": 0.8938955824896976,
-          "equity": 1056000.442
+          "excess": 0.9396775164165272,
+          "equity": 1110325.128
         },
         {
           "date": "2024-11-30",
-          "strategy": 1.096555811,
+          "strategy": 1.155443123,
           "benchmark": 1.1294766924856192,
-          "excess": 0.9246354420235887,
-          "equity": 1096555.811
+          "excess": 0.9744697953452801,
+          "equity": 1155443.123
         },
         {
           "date": "2024-12-31",
-          "strategy": 1.098390902,
+          "strategy": 1.164941284,
           "benchmark": 1.1662456157842145,
-          "excess": 0.8942910069012739,
-          "equity": 1098390.902
+          "excess": 0.9486973425577413,
+          "equity": 1164941.284
         },
         {
           "date": "2025-01-31",
-          "strategy": 1.062764224,
+          "strategy": 1.134834305,
           "benchmark": 1.1198649236002634,
-          "excess": 0.8994869819511018,
-          "equity": 1062764.224
+          "excess": 0.960799647194559,
+          "equity": 1134834.305
         },
         {
           "date": "2025-02-28",
-          "strategy": 1.073979333,
+          "strategy": 1.156142592,
           "benchmark": 1.1529121886656621,
-          "excess": 0.8819083351279683,
-          "equity": 1073979.333
+          "excess": 0.949739915070478,
+          "equity": 1156142.592
         },
         {
           "date": "2025-03-31",
-          "strategy": 1.092851038,
+          "strategy": 1.179257734,
           "benchmark": 1.1400103681311122,
-          "excess": 0.9058694545629093,
-          "equity": 1092851.038
+          "excess": 0.9777985460761339,
+          "equity": 1179257.734
         },
         {
           "date": "2025-04-30",
-          "strategy": 1.116566941,
+          "strategy": 1.199601293,
           "benchmark": 1.1020241730040756,
-          "excess": 0.9566518249548742,
-          "equity": 1116566.941
+          "excess": 1.027922883322493,
+          "equity": 1199601.293
         },
         {
           "date": "2025-05-31",
-          "strategy": 1.133945177,
+          "strategy": 1.231364837,
           "benchmark": 1.1238153438300391,
-          "excess": 0.9518725455242804,
-          "equity": 1133945.177
+          "excess": 1.0337971215516004,
+          "equity": 1231364.837
         },
         {
           "date": "2025-06-30",
-          "strategy": 1.107492093,
+          "strategy": 1.209119119,
           "benchmark": 1.1441937531805735,
-          "excess": 0.9126578730198167,
-          "equity": 1107492.093
+          "excess": 0.996488431919661,
+          "equity": 1209119.119
         },
         {
           "date": "2025-07-31",
-          "strategy": 1.115641784,
+          "strategy": 1.223939599,
           "benchmark": 1.2087672991409542,
-          "excess": 0.8700242520602617,
-          "equity": 1115641.784
+          "excess": 0.9545680071699191,
+          "equity": 1223939.599
         },
         {
           "date": "2025-08-31",
-          "strategy": 1.141373833,
+          "strategy": 1.2566562479999999,
           "benchmark": 1.300482881025898,
-          "excess": 0.8250786830201996,
-          "equity": 1141373.833
+          "excess": 0.9084665638910135,
+          "equity": 1256656.248
         },
         {
           "date": "2025-09-30",
-          "strategy": 1.1310294239999998,
+          "strategy": 1.235899557,
           "benchmark": 1.3512948080774974,
-          "excess": 0.7843416922046248,
-          "equity": 1131029.4239999999
+          "excess": 0.8571376167566144,
+          "equity": 1235899.557
         },
         {
           "date": "2025-10-31",
-          "strategy": 1.169033199,
+          "strategy": 1.288709054,
           "benchmark": 1.3724828446014312,
-          "excess": 0.7953432257687294,
-          "equity": 1169033.199
+          "excess": 0.877017528496885,
+          "equity": 1288709.054
         },
         {
           "date": "2025-11-30",
-          "strategy": 1.145590061,
+          "strategy": 1.273441337,
           "benchmark": 1.3167378247425083,
-          "excess": 0.811214138119154,
-          "equity": 1145590.061
+          "excess": 0.9020077390743242,
+          "equity": 1273441.337
         },
         {
           "date": "2025-12-31",
-          "strategy": 1.135565548,
+          "strategy": 1.263891787,
           "benchmark": 1.3590528984827914,
-          "excess": 0.7784366981846604,
-          "equity": 1135565.548
+          "excess": 0.8665772020540919,
+          "equity": 1263891.787
         },
         {
           "date": "2026-01-31",
-          "strategy": 1.187190777,
+          "strategy": 1.327441088,
           "benchmark": 1.3784912472122723,
-          "excess": 0.8015098774465339,
-          "equity": 1187190.777
+          "excess": 0.8963659429597453,
+          "equity": 1327441.088
         },
         {
           "date": "2026-02-28",
-          "strategy": 1.210007459,
+          "strategy": 1.347133922,
           "benchmark": 1.3712585972540838,
-          "excess": 0.8210163435423121,
-          "equity": 1210007.459
+          "excess": 0.914144698229157,
+          "equity": 1347133.922
         },
         {
           "date": "2026-03-31",
-          "strategy": 1.2014705060000002,
+          "strategy": 1.3277581230000002,
           "benchmark": 1.311024232660814,
-          "excess": 0.8516570319424397,
-          "equity": 1201470.506
+          "excess": 0.9411026494363115,
+          "equity": 1327758.1230000001
         },
         {
           "date": "2026-04-30",
-          "strategy": 1.213513777,
+          "strategy": 1.347823375,
           "benchmark": 1.407061863571457,
-          "excess": 0.800656429224674,
-          "equity": 1213513.777
+          "excess": 0.8891062050289882,
+          "equity": 1347823.375
         },
         {
           "date": "2026-05-31",
-          "strategy": 1.1947105949999999,
+          "strategy": 1.3464635360000001,
           "benchmark": 1.406440750526139,
-          "excess": 0.7870160605098886,
-          "equity": 1194710.595
+          "excess": 0.886773459317145,
+          "equity": 1346463.536
         }
       ],
       "admission_diagnostics": {
         "annual_returns": {
-          "2024": 0.098390902,
-          "2025": 0.06017098978133517,
-          "2026": 0.04431493970128586
+          "2024": 0.16494128399999997,
+          "2025": 0.11145533443890754,
+          "2026": 0.055227621140466754
         },
         "end_pending_orders": 2,
         "max_positions": 25,
-        "max_buy_adv_fraction": 0.0009183943131500527,
-        "largest_industry_abs_pnl_fraction": 0.04416708344616552,
-        "microcap_abs_pnl_fraction": 0.33974323058807204,
+        "max_buy_adv_fraction": 0.0010598726648173896,
+        "largest_industry_abs_pnl_fraction": 0.03898671270511795,
+        "microcap_abs_pnl_fraction": 0.33225601840687324,
         "dsr_evaluated": false
       }
     },
     "gbrt_flat_20bp_roundtrip": {
       "capital": {
         "initial_capital": 1000000.0,
-        "ending_equity": 1269524.664,
-        "ending_cash": 419033.664,
-        "ending_market_value": 850491.0,
-        "total_pnl": 269524.6640000001,
-        "total_return": 0.2695246640000001,
-        "total_fees": 4084.3360000000002,
-        "realized_pnl": 274918.694,
-        "unrealized_pnl": -5394.0299999999115
+        "ending_equity": 1302095.077,
+        "ending_cash": 276695.077,
+        "ending_market_value": 1025400.0,
+        "total_pnl": 302095.07700000005,
+        "total_return": 0.30209507700000005,
+        "total_fees": 5195.923000000001,
+        "realized_pnl": 307370.723,
+        "unrealized_pnl": -5275.64599999995
       },
       "returns": {
-        "ann_return": 0.1052523705524786,
+        "ann_return": 0.11705590377962038,
         "bench_total_return": 0.4064407505261389,
         "bench_ann_return": 0.1537562633136207,
-        "excess_total": -0.13691608652613874,
-        "excess_ann": -0.07364720438445271,
-        "excess_nav_total": -0.16675487318481463
+        "excess_total": -0.10434567352613877,
+        "excess_ann": -0.06469345858381115,
+        "excess_nav_total": -0.14742054137802263
       },
       "risk": {
-        "ann_vol": 0.13503751958869994,
-        "downside_dev": 0.09870058751576567,
-        "max_drawdown": -0.10874835796584703,
-        "max_dd_duration_days": 193,
-        "calmar": 0.9678525039020234,
-        "sortino": 1.066380385381864,
-        "sharpe": 0.7794305676900645,
+        "ann_vol": 0.12909474782043803,
+        "downside_dev": 0.0891290553425595,
+        "max_drawdown": -0.07433372507705494,
+        "max_dd_duration_days": 200,
+        "calmar": 1.5747348011724058,
+        "sortino": 1.3133304659151448,
+        "sharpe": 0.9067441220957893,
         "bench_max_drawdown": -0.19153060955078405,
         "bench_ann_vol": 0.2077504417985633,
         "bench_sharpe": 0.7401007765976456
       },
       "relative": {
-        "beta": 0.21246842828409807,
-        "alpha_ann": 0.07458621507062788,
-        "corr": 0.3268751527628138,
-        "tracking_error": 0.20749698424684207,
-        "information_ratio": -0.3549314446750739,
-        "excess_win_rate": 0.48869565217391303,
-        "excess_max_drawdown": -0.32005024196634246
+        "beta": 0.18978433302665149,
+        "alpha_ann": 0.0881889682672128,
+        "corr": 0.3054173752101353,
+        "tracking_error": 0.20843085893395946,
+        "information_ratio": -0.3103833036753403,
+        "excess_win_rate": 0.4834782608695652,
+        "excess_max_drawdown": -0.30395547233704334
       },
       "trading": {
-        "n_buys": 64,
-        "n_sells": 39,
-        "n_round_trips": 39,
-        "win_rate": 0.9230769230769231,
-        "avg_win": 8205.433111111111,
-        "avg_loss": -6825.6326666666655,
-        "payoff_ratio": 1.2021498243207218,
-        "profit_factor": 14.42579789184866,
-        "avg_hold_days": 153.82051282051282,
-        "median_hold_days": 120.0,
-        "turnover_ann": 1.3786675216535846,
-        "avg_n_positions": 24.57913043478261,
+        "n_buys": 72,
+        "n_sells": 48,
+        "n_round_trips": 48,
+        "win_rate": 0.875,
+        "avg_win": 7866.505214285714,
+        "avg_loss": -3837.0826666666667,
+        "payoff_ratio": 2.0501265929512718,
+        "profit_factor": 14.350886150658903,
+        "avg_hold_days": 123.77083333333333,
+        "median_hold_days": 65.0,
+        "turnover_ann": 1.747064101114895,
+        "avg_n_positions": 24.434782608695652,
         "max_n_positions": 25,
-        "avg_cash_ratio": 0.20672610083739293,
-        "exposure_avg": 0.793273899162607
+        "avg_cash_ratio": 0.18724703019744068,
+        "exposure_avg": 0.8127529698025594
       },
       "meta": {
         "start": "2024-01-02",
@@ -1990,299 +2729,299 @@
       "yearly": [
         {
           "year": 2024,
-          "strategy": 0.31033653900000013,
+          "strategy": 0.31898421200000016,
           "benchmark": 0.16624561578421448,
-          "excess": 0.14409092321578565
+          "excess": 0.15273859621578567
         },
         {
           "year": 2025,
-          "strategy": 0.05006924330274143,
+          "strategy": 0.045602697284339744,
           "benchmark": 0.16532305038414163,
-          "excess": -0.1152538070814002
+          "excess": -0.11972035309980189
         },
         {
           "year": 2026,
-          "strategy": -0.055071069582341314,
+          "strategy": -0.03161589133894627,
           "benchmark": 0.03486829106964873,
-          "excess": -0.08993936065199004
+          "excess": -0.066484182408595
         }
       ],
       "nav_monthly": [
         {
           "date": "2024-01-31",
-          "strategy": 1.035039643,
+          "strategy": 1.040387238,
           "benchmark": 0.9431667700055258,
-          "excess": 1.095440004868239,
-          "equity": 1035039.643
+          "excess": 1.1011097660074447,
+          "equity": 1040387.238
         },
         {
           "date": "2024-02-29",
-          "strategy": 1.101768875,
+          "strategy": 1.09898444,
           "benchmark": 1.0033943633837914,
-          "excess": 1.0922216584422497,
-          "equity": 1101768.875
+          "excess": 1.0895933959898219,
+          "equity": 1098984.44
         },
         {
           "date": "2024-03-31",
-          "strategy": 1.098834517,
+          "strategy": 1.089730321,
           "benchmark": 1.0264470232396274,
-          "excess": 1.0634756246090493,
-          "equity": 1098834.517
+          "excess": 1.0547217945663776,
+          "equity": 1089730.321
         },
         {
           "date": "2024-04-30",
-          "strategy": 1.136639084,
+          "strategy": 1.1247890090000001,
           "benchmark": 1.056326643878805,
-          "excess": 1.0673216176289793,
-          "equity": 1136639.084
+          "excess": 1.0561244739190976,
+          "equity": 1124789.009
         },
         {
           "date": "2024-05-31",
-          "strategy": 1.1419917009999998,
+          "strategy": 1.1400347830000002,
           "benchmark": 1.0506531245479775,
-          "excess": 1.077456422323368,
-          "equity": 1141991.701
+          "excess": 1.075530558894523,
+          "equity": 1140034.783
         },
         {
           "date": "2024-06-30",
-          "strategy": 1.1208337720000001,
+          "strategy": 1.1229411070000002,
           "benchmark": 1.005080162429773,
-          "excess": 1.1048190937559306,
-          "equity": 1120833.772
+          "excess": 1.106741171759059,
+          "equity": 1122941.107
         },
         {
           "date": "2024-07-31",
-          "strategy": 1.146758233,
+          "strategy": 1.139992788,
           "benchmark": 0.9818339975934157,
-          "excess": 1.1559662074572716,
-          "equity": 1146758.233
+          "excess": 1.1488718146502843,
+          "equity": 1139992.788
         },
         {
           "date": "2024-08-31",
-          "strategy": 1.116137887,
+          "strategy": 1.1226028799999999,
           "benchmark": 0.9554864995398481,
-          "excess": 1.154439139595826,
-          "equity": 1116137.887
+          "excess": 1.1608292802972249,
+          "equity": 1122602.88
         },
         {
           "date": "2024-09-30",
-          "strategy": 1.306398051,
+          "strategy": 1.2928545679999999,
           "benchmark": 1.1226941532076107,
-          "excess": 1.144911944223683,
-          "equity": 1306398.051
+          "excess": 1.1320533764959633,
+          "equity": 1292854.568
         },
         {
           "date": "2024-10-31",
-          "strategy": 1.266480444,
+          "strategy": 1.242382591,
           "benchmark": 1.1348856674509196,
-          "excess": 1.0702764122964776,
-          "equity": 1266480.444
+          "excess": 1.0474321379401208,
+          "equity": 1242382.591
         },
         {
           "date": "2024-11-30",
-          "strategy": 1.281365804,
+          "strategy": 1.269110212,
           "benchmark": 1.1294766924856192,
-          "excess": 1.0784725532861554,
-          "equity": 1281365.804
+          "excess": 1.0656338751722159,
+          "equity": 1269110.212
         },
         {
           "date": "2024-12-31",
-          "strategy": 1.3103365390000001,
+          "strategy": 1.3189842120000002,
           "benchmark": 1.1662456157842145,
-          "excess": 1.0655307345270815,
-          "equity": 1310336.539
+          "excess": 1.0698569096903692,
+          "equity": 1318984.212
         },
         {
           "date": "2025-01-31",
-          "strategy": 1.276453539,
+          "strategy": 1.282942212,
           "benchmark": 1.1198649236002634,
-          "excess": 1.0792429021005394,
-          "equity": 1276453.539
+          "excess": 1.0818821388927828,
+          "equity": 1282942.212
         },
         {
           "date": "2025-02-28",
-          "strategy": 1.254377539,
+          "strategy": 1.2798262120000001,
           "benchmark": 1.1529121886656621,
-          "excess": 1.0288729025244672,
-          "equity": 1254377.539
+          "excess": 1.0470234032921588,
+          "equity": 1279826.212
         },
         {
           "date": "2025-03-31",
-          "strategy": 1.2761545390000002,
+          "strategy": 1.298742212,
           "benchmark": 1.1400103681311122,
-          "excess": 1.0566370500834383,
-          "equity": 1276154.539
+          "excess": 1.0724660077106558,
+          "equity": 1298742.212
         },
         {
           "date": "2025-04-30",
-          "strategy": 1.2522482320000001,
+          "strategy": 1.274084212,
           "benchmark": 1.1020241730040756,
-          "excess": 1.070425493663108,
-          "equity": 1252248.232
+          "excess": 1.0856071455533296,
+          "equity": 1274084.212
         },
         {
           "date": "2025-05-31",
-          "strategy": 1.303640852,
+          "strategy": 1.3166839380000002,
           "benchmark": 1.1238153438300391,
-          "excess": 1.0918251195195066,
-          "equity": 1303640.852
+          "excess": 1.099324601530085,
+          "equity": 1316683.938
         },
         {
           "date": "2025-06-30",
-          "strategy": 1.308988852,
+          "strategy": 1.3281229380000001,
           "benchmark": 1.1441937531805735,
-          "excess": 1.0760934064823298,
-          "equity": 1308988.852
+          "excess": 1.0884764894902101,
+          "equity": 1328122.938
         },
         {
           "date": "2025-07-31",
-          "strategy": 1.339108139,
+          "strategy": 1.339024996,
           "benchmark": 1.2087672991409542,
-          "excess": 1.0416337005981409,
-          "equity": 1339108.139
+          "excess": 1.038409191415516,
+          "equity": 1339024.996
         },
         {
           "date": "2025-08-31",
-          "strategy": 1.3534011229999998,
+          "strategy": 1.338077452,
           "benchmark": 1.300482881025898,
-          "excess": 0.9758249286929964,
-          "equity": 1353401.123
+          "excess": 0.9619479459091166,
+          "equity": 1338077.452
         },
         {
           "date": "2025-09-30",
-          "strategy": 1.300991188,
+          "strategy": 1.28077306,
           "benchmark": 1.3512948080774974,
-          "excess": 0.8999063841803232,
-          "equity": 1300991.188
+          "excess": 0.8833235178086845,
+          "equity": 1280773.06
         },
         {
           "date": "2025-10-31",
-          "strategy": 1.3263823829999999,
+          "strategy": 1.322907611,
           "benchmark": 1.3724828446014312,
-          "excess": 0.900158826091981,
-          "equity": 1326382.383
+          "excess": 0.8953004917116756,
+          "equity": 1322907.611
         },
         {
           "date": "2025-11-30",
-          "strategy": 1.320683383,
+          "strategy": 1.325302651,
           "benchmark": 1.3167378247425083,
-          "excess": 0.9326250598197131,
-          "equity": 1320683.383
+          "excess": 0.9333528230772933,
+          "equity": 1325302.651
         },
         {
           "date": "2025-12-31",
-          "strategy": 1.337046383,
+          "strategy": 1.345119994,
           "benchmark": 1.3590528984827914,
-          "excess": 0.9140672190648692,
-          "equity": 1337046.383
+          "excess": 0.9171263592719525,
+          "equity": 1345119.994
         },
         {
           "date": "2026-01-31",
-          "strategy": 1.292547817,
+          "strategy": 1.310605976,
           "benchmark": 1.3784912472122723,
-          "excess": 0.8703449885136376,
-          "equity": 1292547.817
+          "excess": 0.8801026630271851,
+          "equity": 1310605.976
         },
         {
           "date": "2026-02-28",
-          "strategy": 1.300406817,
+          "strategy": 1.321363976,
           "benchmark": 1.3712585972540838,
-          "excess": 0.8798345980984342,
-          "equity": 1300406.817
+          "excess": 0.8916317839238534,
+          "equity": 1321363.976
         },
         {
           "date": "2026-03-31",
-          "strategy": 1.2884961769999999,
+          "strategy": 1.309033983,
           "benchmark": 1.311024232660814,
-          "excess": 0.910331313769267,
-          "equity": 1288496.177
+          "excess": 0.9225339039500172,
+          "equity": 1309033.983
         },
         {
           "date": "2026-04-30",
-          "strategy": 1.288262177,
+          "strategy": 1.325911983,
           "benchmark": 1.407061863571457,
-          "excess": 0.8468911783650486,
-          "equity": 1288262.177
+          "excess": 0.869576890949929,
+          "equity": 1325911.983
         },
         {
           "date": "2026-05-31",
-          "strategy": 1.2695246640000002,
+          "strategy": 1.3020950770000002,
           "benchmark": 1.406440750526139,
-          "excess": 0.8332451268151854,
-          "equity": 1269524.664
+          "excess": 0.8525794586219774,
+          "equity": 1302095.077
         }
       ],
       "admission_diagnostics": {
         "annual_returns": {
-          "2024": 0.31033653900000013,
-          "2025": 0.05006924330274143,
-          "2026": -0.055071069582341314
+          "2024": 0.31898421200000016,
+          "2025": 0.045602697284339744,
+          "2026": -0.03161589133894627
         },
         "end_pending_orders": 0,
         "max_positions": 25,
-        "max_buy_adv_fraction": 0.000737078159054516,
-        "largest_industry_abs_pnl_fraction": 0.16171573535891015,
-        "microcap_abs_pnl_fraction": 0.03651674129646426,
+        "max_buy_adv_fraction": 0.0007631517735963121,
+        "largest_industry_abs_pnl_fraction": 0.2255941306967632,
+        "microcap_abs_pnl_fraction": 0.0,
         "dsr_evaluated": false
       }
     },
     "ensemble_flat_20bp_roundtrip": {
       "capital": {
         "initial_capital": 1000000.0,
-        "ending_equity": 1161156.947,
-        "ending_cash": 258174.94700000001,
-        "ending_market_value": 902982.0,
-        "total_pnl": 161156.94699999993,
-        "total_return": 0.16115694699999994,
-        "total_fees": 11364.053,
-        "realized_pnl": 209783.60499999998,
-        "unrealized_pnl": -48626.658000000054
+        "ending_equity": 1138685.037,
+        "ending_cash": 448071.037,
+        "ending_market_value": 690614.0,
+        "total_pnl": 138685.037,
+        "total_return": 0.138685037,
+        "total_fees": 10751.963,
+        "realized_pnl": 188754.981,
+        "unrealized_pnl": -50069.94399999999
       },
       "returns": {
-        "ann_return": 0.06466192406436977,
+        "ann_return": 0.055972494730104794,
         "bench_total_return": 0.4064407505261389,
         "bench_ann_return": 0.1537562633136207,
-        "excess_total": -0.2452838035261391,
-        "excess_ann": -0.10824267136842047,
-        "excess_nav_total": -0.23905220107755454
+        "excess_total": -0.2677557135261388,
+        "excess_ann": -0.11554667971353716,
+        "excess_nav_total": -0.2538306973783646
       },
       "risk": {
-        "ann_vol": 0.1382985580262717,
-        "downside_dev": 0.1047545942804173,
-        "max_drawdown": -0.16459666403024265,
-        "max_dd_duration_days": 115,
-        "calmar": 0.3928507570025169,
-        "sortino": 0.6172705312692676,
-        "sharpe": 0.4675531327816618,
+        "ann_vol": 0.14130141315321393,
+        "downside_dev": 0.10806988449051387,
+        "max_drawdown": -0.16144609699415846,
+        "max_dd_duration_days": 127,
+        "calmar": 0.34669462918097066,
+        "sortino": 0.5179286995075666,
+        "sharpe": 0.3961212664548054,
         "bench_max_drawdown": -0.19153060955078405,
         "bench_ann_vol": 0.2077504417985633,
         "bench_sharpe": 0.7401007765976456
       },
       "relative": {
-        "beta": 0.19914394019477744,
-        "alpha_ann": 0.03965726294329085,
-        "corr": 0.2991516480534271,
-        "tracking_error": 0.21235944597857845,
-        "information_ratio": -0.5097144177864324,
-        "excess_win_rate": 0.48695652173913045,
-        "excess_max_drawdown": -0.2966172888768027
+        "beta": 0.19829868178441892,
+        "alpha_ann": 0.031987665481491796,
+        "corr": 0.2915514985268831,
+        "tracking_error": 0.21449730913286857,
+        "information_ratio": -0.5386859172296783,
+        "excess_win_rate": 0.47130434782608693,
+        "excess_max_drawdown": -0.30923235276948835
       },
       "trading": {
-        "n_buys": 149,
-        "n_sells": 124,
-        "n_round_trips": 124,
-        "win_rate": 0.6290322580645161,
-        "avg_win": 4438.442551282052,
-        "avg_loss": -2965.541608695652,
-        "payoff_ratio": 1.4966718181486696,
-        "profit_factor": 2.5378348220781786,
-        "avg_hold_days": 73.40322580645162,
-        "median_hold_days": 47.5,
-        "turnover_ann": 4.344079345593396,
-        "avg_n_positions": 23.64695652173913,
+        "n_buys": 146,
+        "n_sells": 121,
+        "n_round_trips": 121,
+        "win_rate": 0.6363636363636364,
+        "avg_win": 4458.581116883118,
+        "avg_loss": -3512.6310227272725,
+        "payoff_ratio": 1.2692995899755484,
+        "profit_factor": 2.2212742824572094,
+        "avg_hold_days": 78.32231404958678,
+        "median_hold_days": 45.0,
+        "turnover_ann": 4.070277136237306,
+        "avg_n_positions": 24.029565217391305,
         "max_n_positions": 25,
-        "avg_cash_ratio": 0.1884034298482136,
-        "exposure_avg": 0.8115965701517864
+        "avg_cash_ratio": 0.21691661688335792,
+        "exposure_avg": 0.783083383116642
       },
       "meta": {
         "start": "2024-01-02",
@@ -2295,299 +3034,299 @@
       "yearly": [
         {
           "year": 2024,
-          "strategy": 0.12243287299999994,
+          "strategy": 0.1342917990000001,
           "benchmark": 0.16624561578421448,
-          "excess": -0.04381274278421454
+          "excess": -0.031953816784214384
         },
         {
           "year": 2025,
-          "strategy": 0.0651777033857932,
+          "strategy": 0.06232804929208524,
           "benchmark": 0.16532305038414163,
-          "excess": -0.10014534699834843
+          "excess": -0.10299500109205639
         },
         {
           "year": 2026,
-          "strategy": -0.012446080805644244,
+          "strategy": -0.03712000457845421,
           "benchmark": 0.03486829106964873,
-          "excess": -0.04731437187529297
+          "excess": -0.07198829564810294
         }
       ],
       "nav_monthly": [
         {
           "date": "2024-01-31",
-          "strategy": 0.9664230300000001,
+          "strategy": 0.972174918,
           "benchmark": 0.9431667700055258,
-          "excess": 1.023009639590816,
-          "equity": 966423.03
+          "excess": 1.0290806851413246,
+          "equity": 972174.918
         },
         {
           "date": "2024-02-29",
-          "strategy": 1.029233974,
+          "strategy": 1.034992227,
           "benchmark": 1.0033943633837914,
-          "excess": 1.0219686141373427,
-          "equity": 1029233.974
+          "excess": 1.0276937760713023,
+          "equity": 1034992.227
         },
         {
           "date": "2024-03-31",
-          "strategy": 1.014943601,
+          "strategy": 1.0211667020000001,
           "benchmark": 1.0264470232396274,
-          "excess": 0.9838827163306847,
-          "equity": 1014943.601
+          "excess": 0.9898540867032541,
+          "equity": 1021166.702
         },
         {
           "date": "2024-04-30",
-          "strategy": 1.035447501,
+          "strategy": 1.045708122,
           "benchmark": 1.056326643878805,
-          "excess": 0.9739078543924753,
-          "equity": 1035447.501
+          "excess": 0.9834504562767808,
+          "equity": 1045708.122
         },
         {
           "date": "2024-05-31",
-          "strategy": 1.060402815,
+          "strategy": 1.079964071,
           "benchmark": 1.0506531245479775,
-          "excess": 1.0021323680476009,
-          "equity": 1060402.815
+          "excess": 1.0204791029335853,
+          "equity": 1079964.071
         },
         {
           "date": "2024-06-30",
-          "strategy": 1.019962938,
+          "strategy": 1.039208938,
           "benchmark": 1.005080162429773,
-          "excess": 1.0070633909495383,
-          "equity": 1019962.938
+          "excess": 1.0259265955031067,
+          "equity": 1039208.938
         },
         {
           "date": "2024-07-31",
-          "strategy": 0.995982381,
+          "strategy": 1.017397798,
           "benchmark": 0.9818339975934157,
-          "excess": 1.0055734090496722,
-          "equity": 995982.381
+          "excess": 1.0270385873403691,
+          "equity": 1017397.798
         },
         {
           "date": "2024-08-31",
-          "strategy": 0.946638359,
+          "strategy": 0.967287309,
           "benchmark": 0.9554864995398481,
-          "excess": 0.9809268962606208,
-          "equity": 946638.359
+          "excess": 1.002197523046235,
+          "equity": 967287.309
         },
         {
           "date": "2024-09-30",
-          "strategy": 1.078100858,
+          "strategy": 1.1070785220000001,
           "benchmark": 1.1226941532076107,
-          "excess": 0.9458599618147343,
-          "equity": 1078100.858
+          "excess": 0.9716432581204604,
+          "equity": 1107078.522
         },
         {
           "date": "2024-10-31",
-          "strategy": 1.054267182,
+          "strategy": 1.074781687,
           "benchmark": 1.1348856674509196,
-          "excess": 0.8888613510340462,
-          "equity": 1054267.182
+          "excess": 0.906937332402113,
+          "equity": 1074781.687
         },
         {
           "date": "2024-11-30",
-          "strategy": 1.0932564240000002,
+          "strategy": 1.1100560490000002,
           "benchmark": 1.1294766924856192,
-          "excess": 0.9180945211148681,
-          "equity": 1093256.424
+          "excess": 0.932847803564025,
+          "equity": 1110056.049
         },
         {
           "date": "2024-12-31",
-          "strategy": 1.122432873,
+          "strategy": 1.134291799,
           "benchmark": 1.1662456157842145,
-          "excess": 0.9102164206692874,
-          "equity": 1122432.873
+          "excess": 0.920497846108161,
+          "equity": 1134291.799
         },
         {
           "date": "2025-01-31",
-          "strategy": 1.097944808,
+          "strategy": 1.107100851,
           "benchmark": 1.1198649236002634,
-          "excess": 0.9255583069053708,
-          "equity": 1097944.808
+          "excess": 0.9339825315393169,
+          "equity": 1107100.851
         },
         {
           "date": "2025-02-28",
-          "strategy": 1.080763889,
+          "strategy": 1.0844547660000001,
           "benchmark": 1.1529121886656621,
-          "excess": 0.8838109583474666,
-          "equity": 1080763.889
+          "excess": 0.887501485166575,
+          "equity": 1084454.766
         },
         {
           "date": "2025-03-31",
-          "strategy": 1.103731531,
+          "strategy": 1.114082976,
           "benchmark": 1.1400103681311122,
-          "excess": 0.9110938039112593,
-          "equity": 1103731.531
+          "excess": 0.9203377237119498,
+          "equity": 1114082.976
         },
         {
           "date": "2025-04-30",
-          "strategy": 1.090638065,
+          "strategy": 1.1068105419999998,
           "benchmark": 1.1020241730040756,
-          "excess": 0.9293407839656639,
-          "equity": 1090638.065
+          "excess": 0.944146444310034,
+          "equity": 1106810.542
         },
         {
           "date": "2025-05-31",
-          "strategy": 1.125704579,
+          "strategy": 1.146022679,
           "benchmark": 1.1238153438300391,
-          "excess": 0.9399026277302025,
-          "equity": 1125704.579
+          "excess": 0.9579087814722423,
+          "equity": 1146022.679
         },
         {
           "date": "2025-06-30",
-          "strategy": 1.1259283160000002,
+          "strategy": 1.149017805,
           "benchmark": 1.1441937531805735,
-          "excess": 0.9227832660673609,
-          "equity": 1125928.316
+          "excess": 0.9427697223929372,
+          "equity": 1149017.805
         },
         {
           "date": "2025-07-31",
-          "strategy": 1.148898818,
+          "strategy": 1.167110401,
           "benchmark": 1.2087672991409542,
-          "excess": 0.8910617917512964,
-          "equity": 1148898.818
+          "excess": 0.9061422688247323,
+          "equity": 1167110.401
         },
         {
           "date": "2025-08-31",
-          "strategy": 1.1573336,
+          "strategy": 1.182353674,
           "benchmark": 1.300482881025898,
-          "excess": 0.8320843052085203,
-          "equity": 1157333.6
+          "excess": 0.8510065090584386,
+          "equity": 1182353.674
         },
         {
           "date": "2025-09-30",
-          "strategy": 1.128092189,
+          "strategy": 1.149643311,
           "benchmark": 1.3512948080774974,
-          "excess": 0.7782434116324484,
-          "equity": 1128092.189
+          "excess": 0.793954595940213,
+          "equity": 1149643.311
         },
         {
           "date": "2025-10-31",
-          "strategy": 1.178813932,
+          "strategy": 1.185975308,
           "benchmark": 1.3724828446014312,
-          "excess": 0.7980780564859061,
-          "equity": 1178813.932
+          "excess": 0.8036455203306249,
+          "equity": 1185975.308
         },
         {
           "date": "2025-11-30",
-          "strategy": 1.1598964550000002,
+          "strategy": 1.178676838,
           "benchmark": 1.3167378247425083,
-          "excess": 0.8172315538088062,
-          "equity": 1159896.455
+          "excess": 0.83101006857541,
+          "equity": 1178676.838
         },
         {
           "date": "2025-12-31",
-          "strategy": 1.171410936,
+          "strategy": 1.1798245049999998,
           "benchmark": 1.3590528984827914,
-          "excess": 0.7990136340658079,
-          "equity": 1171410.936
+          "excess": 0.8052706122136201,
+          "equity": 1179824.505
         },
         {
           "date": "2026-01-31",
-          "strategy": 1.1819608389999998,
+          "strategy": 1.172913505,
           "benchmark": 1.3784912472122723,
-          "excess": 0.7940667843578008,
-          "equity": 1181960.839
+          "excess": 0.7884110464536106,
+          "equity": 1172913.505
         },
         {
           "date": "2026-02-28",
-          "strategy": 1.202915503,
+          "strategy": 1.195156627,
           "benchmark": 1.3712585972540838,
-          "excess": 0.8121184666762957,
-          "equity": 1202915.503
+          "excess": 0.807209991403442,
+          "equity": 1195156.627
         },
         {
           "date": "2026-03-31",
-          "strategy": 1.185220195,
+          "strategy": 1.173906808,
           "benchmark": 1.311024232660814,
-          "excess": 0.8359200126420258,
-          "equity": 1185220.195
+          "excess": 0.8280386364473188,
+          "equity": 1173906.808
         },
         {
           "date": "2026-04-30",
-          "strategy": 1.1741243829999999,
+          "strategy": 1.1547905840000001,
           "benchmark": 1.407061863571457,
-          "excess": 0.7706145507157297,
-          "equity": 1174124.383
+          "excess": 0.7578546617233902,
+          "equity": 1154790.584
         },
         {
           "date": "2026-05-31",
-          "strategy": 1.1611569469999998,
+          "strategy": 1.1386850370000001,
           "benchmark": 1.406440750526139,
-          "excess": 0.7609477989224455,
-          "equity": 1161156.947
+          "excess": 0.7461693026216354,
+          "equity": 1138685.037
         }
       ],
       "admission_diagnostics": {
         "annual_returns": {
-          "2024": 0.12243287299999994,
-          "2025": 0.0651777033857932,
-          "2026": -0.012446080805644244
+          "2024": 0.1342917990000001,
+          "2025": 0.06232804929208524,
+          "2026": -0.03712000457845421
         },
         "end_pending_orders": 0,
         "max_positions": 25,
-        "max_buy_adv_fraction": 0.0008737601965442558,
-        "largest_industry_abs_pnl_fraction": 0.07591663740532477,
-        "microcap_abs_pnl_fraction": 0.24367311798385025,
+        "max_buy_adv_fraction": 0.0008743785160777192,
+        "largest_industry_abs_pnl_fraction": 0.08070584205250954,
+        "microcap_abs_pnl_fraction": 0.2398724344003929,
         "dsr_evaluated": false
       }
     },
     "gbrt_flat_40bp_roundtrip": {
       "capital": {
         "initial_capital": 1000000.0,
-        "ending_equity": 1265440.328,
-        "ending_cash": 414949.328,
-        "ending_market_value": 850491.0,
-        "total_pnl": 265440.328,
-        "total_return": 0.265440328,
-        "total_fees": 8168.6720000000005,
-        "realized_pnl": 271689.388,
-        "unrealized_pnl": -6249.059999999998
+        "ending_equity": 1296899.154,
+        "ending_cash": 271499.154,
+        "ending_market_value": 1025400.0,
+        "total_pnl": 296899.1540000001,
+        "total_return": 0.2968991540000001,
+        "total_fees": 10391.846000000001,
+        "realized_pnl": 303204.446,
+        "unrealized_pnl": -6305.291999999899
       },
       "returns": {
-        "ann_return": 0.1037598511202138,
+        "ann_return": 0.115184485362126,
         "bench_total_return": 0.4064407505261389,
         "bench_ann_return": 0.1537562633136207,
-        "excess_total": -0.14100042252613898,
-        "excess_ann": -0.07487870804989871,
-        "excess_nav_total": -0.16939399943312072
+        "excess_total": -0.10954159652613882,
+        "excess_ann": -0.06623803544720608,
+        "excess_nav_total": -0.15077422143586516
       },
       "risk": {
-        "ann_vol": 0.1352742833208737,
-        "downside_dev": 0.09883148008106041,
-        "max_drawdown": -0.1092696504387276,
-        "max_dd_duration_days": 193,
-        "calmar": 0.9495761238697894,
-        "sortino": 1.049866409317266,
-        "sharpe": 0.7670330869474506,
+        "ann_vol": 0.1293921560097712,
+        "downside_dev": 0.08933818215308749,
+        "max_drawdown": -0.07468143193863297,
+        "max_dd_duration_days": 200,
+        "calmar": 1.5423443601988656,
+        "sortino": 1.2893085866102467,
+        "sharpe": 0.8901968165166652,
         "bench_max_drawdown": -0.19153060955078405,
         "bench_ann_vol": 0.2077504417985633,
         "bench_sharpe": 0.7401007765976456
       },
       "relative": {
-        "beta": 0.21296828996427336,
-        "alpha_ann": 0.07317929070724112,
-        "corr": 0.3270707132427672,
-        "tracking_error": 0.2075472240156672,
-        "information_ratio": -0.3607791354715798,
-        "excess_win_rate": 0.48869565217391303,
-        "excess_max_drawdown": -0.3209085885682528
+        "beta": 0.19035689149789392,
+        "alpha_ann": 0.08644956142521966,
+        "corr": 0.3056346654050824,
+        "tracking_error": 0.20849670392830885,
+        "information_ratio": -0.3176934416669814,
+        "excess_win_rate": 0.4834782608695652,
+        "excess_max_drawdown": -0.3050736473088532
       },
       "trading": {
-        "n_buys": 64,
-        "n_sells": 39,
-        "n_round_trips": 39,
-        "win_rate": 0.9230769230769231,
-        "avg_win": 8122.588444444445,
-        "avg_loss": -6907.932,
-        "payoff_ratio": 1.1758350320246993,
-        "profit_factor": 14.110020384296392,
-        "avg_hold_days": 153.82051282051282,
-        "median_hold_days": 120.0,
-        "turnover_ann": 1.3816522122777508,
-        "avg_n_positions": 24.57913043478261,
+        "n_buys": 72,
+        "n_sells": 48,
+        "n_round_trips": 48,
+        "win_rate": 0.875,
+        "avg_win": 7778.224714285715,
+        "avg_loss": -3913.4986666666664,
+        "payoff_ratio": 1.987537335974319,
+        "profit_factor": 13.912761351820231,
+        "avg_hold_days": 123.77083333333333,
+        "median_hold_days": 65.0,
+        "turnover_ann": 1.7515083494565367,
+        "avg_n_positions": 24.434782608695652,
         "max_n_positions": 25,
-        "avg_cash_ratio": 0.20506414005459705,
-        "exposure_avg": 0.794935859945403
+        "avg_cash_ratio": 0.18521281023328034,
+        "exposure_avg": 0.8147871897667196
       },
       "meta": {
         "start": "2024-01-02",
@@ -2600,299 +3339,299 @@
       "yearly": [
         {
           "year": 2024,
-          "strategy": 0.307809078,
+          "strategy": 0.3158814240000001,
           "benchmark": 0.16624561578421448,
-          "excess": 0.14156346221578553
+          "excess": 0.1496358082157856
         },
         {
           "year": 2025,
-          "strategy": 0.04915750355747228,
+          "strategy": 0.04458682394386759,
           "benchmark": 0.16532305038414163,
-          "excess": -0.11616554682666935
+          "excess": -0.12073622644027404
         },
         {
           "year": 2026,
-          "strategy": -0.05543061546626005,
+          "strategy": -0.03220669134207632,
           "benchmark": 0.03486829106964873,
-          "excess": -0.09029890653590877
+          "excess": -0.06707498241172505
         }
       ],
       "nav_monthly": [
         {
           "date": "2024-01-31",
-          "strategy": 1.034193286,
+          "strategy": 1.039418476,
           "benchmark": 0.9431667700055258,
-          "excess": 1.0945513774491955,
-          "equity": 1034193.286
+          "excess": 1.1000920095769142,
+          "equity": 1039418.476
         },
         {
           "date": "2024-02-29",
-          "strategy": 1.10054875,
+          "strategy": 1.09776788,
           "benchmark": 1.0033943633837914,
-          "excess": 1.0910227679105393,
-          "equity": 1100548.75
+          "excess": 1.0883977918849965,
+          "equity": 1097767.88
         },
         {
           "date": "2024-03-31",
-          "strategy": 1.097470034,
+          "strategy": 1.088327642,
           "benchmark": 1.0264470232396274,
-          "excess": 1.0621663606818614,
-          "equity": 1097470.034
+          "excess": 1.0533744826016427,
+          "equity": 1088327.642
         },
         {
           "date": "2024-04-30",
-          "strategy": 1.1351781680000002,
+          "strategy": 1.1231040179999998,
           "benchmark": 1.056326643878805,
-          "excess": 1.0659617087415252,
-          "equity": 1135178.168
+          "excess": 1.0545519831731085,
+          "equity": 1123104.018
         },
         {
           "date": "2024-05-31",
-          "strategy": 1.140501402,
+          "strategy": 1.138170566,
           "benchmark": 1.0506531245479775,
-          "excess": 1.0760625476403696,
-          "equity": 1140501.402
+          "excess": 1.0737820016888926,
+          "equity": 1138170.566
         },
         {
           "date": "2024-06-30",
-          "strategy": 1.119186544,
+          "strategy": 1.120814214,
           "benchmark": 1.005080162429773,
-          "excess": 1.103208201078661,
-          "equity": 1119186.544
+          "excess": 1.1046560761869586,
+          "equity": 1120814.214
         },
         {
           "date": "2024-07-31",
-          "strategy": 1.144929466,
+          "strategy": 1.1375665759999998,
           "benchmark": 0.9818339975934157,
-          "excess": 1.1541370246744656,
-          "equity": 1144929.466
+          "excess": 1.1464395360008217,
+          "equity": 1137566.576
         },
         {
           "date": "2024-08-31",
-          "strategy": 1.114133774,
+          "strategy": 1.12008376,
           "benchmark": 0.9554864995398481,
-          "excess": 1.1523805842340789,
-          "equity": 1114133.774
+          "excess": 1.1582366246881004,
+          "equity": 1120083.76
         },
         {
           "date": "2024-09-30",
-          "strategy": 1.304249102,
+          "strategy": 1.290234136,
           "benchmark": 1.1226941532076107,
-          "excess": 1.143052978196802,
-          "equity": 1304249.102
+          "excess": 1.1297824771380318,
+          "equity": 1290234.136
         },
         {
           "date": "2024-10-31",
-          "strategy": 1.264124888,
+          "strategy": 1.239491182,
           "benchmark": 1.1348856674509196,
-          "excess": 1.0683289115100338,
-          "equity": 1264124.888
+          "excess": 1.0450356284583269,
+          "equity": 1239491.182
         },
         {
           "date": "2024-11-30",
-          "strategy": 1.278940608,
+          "strategy": 1.266007424,
           "benchmark": 1.1294766924856192,
-          "excess": 1.0764728346391805,
-          "equity": 1278940.608
+          "excess": 1.06306701395854,
+          "equity": 1266007.424
         },
         {
           "date": "2024-12-31",
-          "strategy": 1.307809078,
+          "strategy": 1.315881424,
           "benchmark": 1.1662456157842145,
-          "excess": 1.0635165531399675,
-          "equity": 1307809.078
+          "excess": 1.0673792604141343,
+          "equity": 1315881.424
         },
         {
           "date": "2025-01-31",
-          "strategy": 1.273926078,
+          "strategy": 1.2798394240000002,
           "benchmark": 1.1198649236002634,
-          "excess": 1.0771496697266478,
-          "equity": 1273926.078
+          "excess": 1.0793074639680502,
+          "equity": 1279839.424
         },
         {
           "date": "2025-02-28",
-          "strategy": 1.251850078,
+          "strategy": 1.276723424,
           "benchmark": 1.1529121886656621,
-          "excess": 1.0268416831930791,
-          "equity": 1251850.078
+          "excess": 1.0445258104555146,
+          "equity": 1276723.424
         },
         {
           "date": "2025-03-31",
-          "strategy": 1.273627078,
+          "strategy": 1.2956394240000002,
           "benchmark": 1.1400103681311122,
-          "excess": 1.0545874830387578,
-          "equity": 1273627.078
+          "excess": 1.0699455563382567,
+          "equity": 1295639.424
         },
         {
           "date": "2025-04-30",
-          "strategy": 1.2496244639999998,
+          "strategy": 1.2709814240000001,
           "benchmark": 1.1020241730040756,
-          "excess": 1.0682319781974894,
-          "equity": 1249624.464
+          "excess": 1.0830104240833676,
+          "equity": 1270981.424
         },
         {
           "date": "2025-05-31",
-          "strategy": 1.300579704,
+          "strategy": 1.313257876,
           "benchmark": 1.1238153438300391,
-          "excess": 1.0893142237705946,
-          "equity": 1300579.704
+          "excess": 1.0965125145550416,
+          "equity": 1313257.876
         },
         {
           "date": "2025-06-30",
-          "strategy": 1.305927704,
+          "strategy": 1.324696876,
           "benchmark": 1.1441937531805735,
-          "excess": 1.0736290714965178,
-          "equity": 1305927.704
+          "excess": 1.0857167244668435,
+          "equity": 1324696.876
         },
         {
           "date": "2025-07-31",
-          "strategy": 1.335663278,
+          "strategy": 1.335384992,
           "benchmark": 1.2087672991409542,
-          "excess": 1.0390040274507655,
-          "equity": 1335663.278
+          "excess": 1.0356320778110932,
+          "equity": 1335384.992
         },
         {
           "date": "2025-08-31",
-          "strategy": 1.3498232460000001,
+          "strategy": 1.3342529040000002,
           "benchmark": 1.300482881025898,
-          "excess": 0.9732901620140135,
-          "equity": 1349823.246
+          "excess": 0.9592411064650703,
+          "equity": 1334252.904
         },
         {
           "date": "2025-09-30",
-          "strategy": 1.297296376,
+          "strategy": 1.27668512,
           "benchmark": 1.3512948080774974,
-          "excess": 0.897391282230916,
-          "equity": 1297296.376
+          "excess": 0.8805433107078829,
+          "equity": 1276685.12
         },
         {
           "date": "2025-10-31",
-          "strategy": 1.322569766,
+          "strategy": 1.3187432220000002,
           "benchmark": 1.3724828446014312,
-          "excess": 0.8976102290840414,
-          "equity": 1322569.766
+          "excess": 0.8925232023072933,
+          "equity": 1318743.222
         },
         {
           "date": "2025-11-30",
-          "strategy": 1.316870766,
+          "strategy": 1.3210893019999999,
           "benchmark": 1.3167378247425083,
-          "excess": 0.9299739289083645,
-          "equity": 1316870.766
+          "excess": 0.9304295171128205,
+          "equity": 1321089.302
         },
         {
           "date": "2025-12-31",
-          "strategy": 1.333233766,
+          "strategy": 1.340571988,
           "benchmark": 1.3590528984827914,
-          "excess": 0.9115012957553549,
-          "equity": 1333233.766
+          "excess": 0.9140683347678705,
+          "equity": 1340571.988
         },
         {
           "date": "2026-01-31",
-          "strategy": 1.288629634,
+          "strategy": 1.305861952,
           "benchmark": 1.3784912472122723,
-          "excess": 0.8677447063386379,
-          "equity": 1288629.634
+          "excess": 0.8769586571955291,
+          "equity": 1305861.952
         },
         {
           "date": "2026-02-28",
-          "strategy": 1.2964886340000001,
+          "strategy": 1.3166199520000001,
           "benchmark": 1.3712585972540838,
-          "excess": 0.8772226779673348,
-          "equity": 1296488.634
+          "excess": 0.8884737817607101,
+          "equity": 1316619.952
         },
         {
           "date": "2026-03-31",
-          "strategy": 1.2844713540000001,
+          "strategy": 1.303889966,
           "benchmark": 1.311024232660814,
-          "excess": 0.907532968908415,
-          "equity": 1284471.354
+          "excess": 0.9189593238672285,
+          "equity": 1303889.966
         },
         {
           "date": "2026-04-30",
-          "strategy": 1.284237354,
+          "strategy": 1.320767966,
           "benchmark": 1.407061863571457,
-          "excess": 0.8442880636428545,
-          "equity": 1284237.354
+          "excess": 0.8662523365574303,
+          "equity": 1320767.966
         },
         {
           "date": "2026-05-31",
-          "strategy": 1.265440328,
+          "strategy": 1.296899154,
           "benchmark": 1.406440750526139,
-          "excess": 0.8306060005668793,
-          "equity": 1265440.328
+          "excess": 0.8492257785641348,
+          "equity": 1296899.154
         }
       ],
       "admission_diagnostics": {
         "annual_returns": {
-          "2024": 0.307809078,
-          "2025": 0.04915750355747228,
-          "2026": -0.05543061546626005
+          "2024": 0.3158814240000001,
+          "2025": 0.04458682394386759,
+          "2026": -0.03220669134207632
         },
         "end_pending_orders": 0,
         "max_positions": 25,
-        "max_buy_adv_fraction": 0.000737078159054516,
-        "largest_industry_abs_pnl_fraction": 0.16217536491537984,
-        "microcap_abs_pnl_fraction": 0.03653758173180312,
+        "max_buy_adv_fraction": 0.0007631517735963121,
+        "largest_industry_abs_pnl_fraction": 0.22625247657235448,
+        "microcap_abs_pnl_fraction": 0.0,
         "dsr_evaluated": false
       }
     },
     "gbrt_flat_80bp_roundtrip": {
       "capital": {
         "initial_capital": 1000000.0,
-        "ending_equity": 1257271.656,
-        "ending_cash": 406780.656,
-        "ending_market_value": 850491.0,
-        "total_pnl": 257271.65599999996,
-        "total_return": 0.25727165599999996,
-        "total_fees": 16337.344000000001,
-        "realized_pnl": 265230.776,
-        "unrealized_pnl": -7959.120000000054
+        "ending_equity": 1286507.308,
+        "ending_cash": 261107.30800000002,
+        "ending_market_value": 1025400.0,
+        "total_pnl": 286507.30799999996,
+        "total_return": 0.28650730799999996,
+        "total_fees": 20783.692000000003,
+        "realized_pnl": 294871.892,
+        "unrealized_pnl": -8364.584000000032
       },
       "returns": {
-        "ann_return": 0.1007663985409577,
+        "ann_return": 0.11142854483436193,
         "bench_total_return": 0.4064407505261389,
         "bench_ann_return": 0.1537562633136207,
-        "excess_total": -0.14916909452613902,
-        "excess_ann": -0.07734873670377285,
-        "excess_nav_total": -0.17467265165131896
+        "excess_total": -0.11993344252613891,
+        "excess_ann": -0.06933808944046926,
+        "excess_nav_total": -0.15748210042297783
       },
       "risk": {
-        "ann_vol": 0.13575361245740614,
-        "downside_dev": 0.09921089319046031,
-        "max_drawdown": -0.1103171963651266,
-        "max_dd_duration_days": 193,
-        "calmar": 0.9134242154545174,
-        "sortino": 1.0156787757924042,
-        "sharpe": 0.7422741591688694,
+        "ann_vol": 0.12999469832705896,
+        "downside_dev": 0.089728823034171,
+        "max_drawdown": -0.07538094286719477,
+        "max_dd_duration_days": 200,
+        "calmar": 1.4782057718576882,
+        "sortino": 1.2418366926748514,
+        "sharpe": 0.857177610074638,
         "bench_max_drawdown": -0.19153060955078405,
         "bench_ann_vol": 0.2077504417985633,
         "bench_sharpe": 0.7401007765976456
       },
       "relative": {
-        "beta": 0.21397271671918955,
-        "alpha_ann": 0.07035246281779658,
-        "corr": 0.32745299094856833,
-        "tracking_error": 0.20765129219937742,
-        "information_ratio": -0.3724934041320873,
-        "excess_win_rate": 0.48869565217391303,
-        "excess_max_drawdown": -0.32263494436859375
+        "beta": 0.1915094774192315,
+        "alpha_ann": 0.08295049442206612,
+        "corr": 0.3060600090194268,
+        "tracking_error": 0.2086328721014434,
+        "information_ratio": -0.3323449883139942,
+        "excess_win_rate": 0.4852173913043478,
+        "excess_max_drawdown": -0.30732535583944
       },
       "trading": {
-        "n_buys": 64,
-        "n_sells": 39,
-        "n_round_trips": 39,
-        "win_rate": 0.9230769230769231,
-        "avg_win": 7956.89911111111,
-        "avg_loss": -7072.530666666666,
-        "payoff_ratio": 1.1250427161260022,
-        "profit_factor": 13.500512593512026,
-        "avg_hold_days": 153.82051282051282,
-        "median_hold_days": 120.0,
-        "turnover_ann": 1.3876605316342938,
-        "avg_n_positions": 24.57913043478261,
+        "n_buys": 72,
+        "n_sells": 48,
+        "n_round_trips": 48,
+        "win_rate": 0.875,
+        "avg_win": 7601.663714285714,
+        "avg_loss": -4066.330666666665,
+        "payoff_ratio": 1.8694160257550094,
+        "profit_factor": 13.085912180285066,
+        "avg_hold_days": 123.77083333333333,
+        "median_hold_days": 65.0,
+        "turnover_ann": 1.7604650257067367,
+        "avg_n_positions": 24.434782608695652,
         "max_n_positions": 25,
-        "avg_cash_ratio": 0.20171714079599562,
-        "exposure_avg": 0.7982828592040043
+        "avg_cash_ratio": 0.18111039191760542,
+        "exposure_avg": 0.8188896080823945
       },
       "meta": {
         "start": "2024-01-02",
@@ -2905,239 +3644,239 @@
       "yearly": [
         {
           "year": 2024,
-          "strategy": 0.302754156,
+          "strategy": 0.3096758479999999,
           "benchmark": 0.16624561578421448,
-          "excess": 0.1365085402157855
+          "excess": 0.14343023221578544
         },
         {
           "year": 2025,
-          "strategy": 0.0473231003108896,
+          "strategy": 0.04254026905782182,
           "benchmark": 0.16532305038414163,
-          "excess": -0.11799995007325204
+          "excess": -0.12278278132631981
         },
         {
           "year": 2026,
-          "strategy": -0.056155881707164235,
+          "strategy": -0.03340040422011281,
           "benchmark": 0.03486829106964873,
-          "excess": -0.09102417277681296
+          "excess": -0.06826869528976154
         }
       ],
       "nav_monthly": [
         {
           "date": "2024-01-31",
-          "strategy": 1.032500572,
+          "strategy": 1.0374809520000001,
           "benchmark": 0.9431667700055258,
-          "excess": 1.092774106742829,
-          "equity": 1032500.572
+          "excess": 1.0980564767262015,
+          "equity": 1037480.952
         },
         {
           "date": "2024-02-29",
-          "strategy": 1.0981085,
+          "strategy": 1.09533476,
           "benchmark": 1.0033943633837914,
-          "excess": 1.088624957544355,
-          "equity": 1098108.5
+          "excess": 1.0860065558998895,
+          "equity": 1095334.76
         },
         {
           "date": "2024-03-31",
-          "strategy": 1.094741068,
+          "strategy": 1.085522284,
           "benchmark": 1.0264470232396274,
-          "excess": 1.0595477957785855,
-          "equity": 1094741.068
+          "excess": 1.0506798208612376,
+          "equity": 1085522.284
         },
         {
           "date": "2024-04-30",
-          "strategy": 1.132256336,
+          "strategy": 1.119734036,
           "benchmark": 1.056326643878805,
-          "excess": 1.0632418509494994,
-          "equity": 1132256.336
+          "excess": 1.0514069509670305,
+          "equity": 1119734.036
         },
         {
           "date": "2024-05-31",
-          "strategy": 1.137520804,
+          "strategy": 1.134442132,
           "benchmark": 1.0506531245479775,
-          "excess": 1.073274756444855,
-          "equity": 1137520.804
+          "excess": 1.0702848272958352,
+          "equity": 1134442.132
         },
         {
           "date": "2024-06-30",
-          "strategy": 1.115892088,
+          "strategy": 1.116560428,
           "benchmark": 1.005080162429773,
-          "excess": 1.0999863601911717,
-          "equity": 1115892.088
+          "excess": 1.1004858066731495,
+          "equity": 1116560.428
         },
         {
           "date": "2024-07-31",
-          "strategy": 1.141271932,
+          "strategy": 1.132714152,
           "benchmark": 0.9818339975934157,
-          "excess": 1.15047859128729,
-          "equity": 1141271.932
+          "excess": 1.1415748805343278,
+          "equity": 1132714.152
         },
         {
           "date": "2024-08-31",
-          "strategy": 1.1101255479999999,
+          "strategy": 1.11504552,
           "benchmark": 0.9554864995398481,
-          "excess": 1.1482633887406168,
-          "equity": 1110125.548
+          "excess": 1.1530512052994502,
+          "equity": 1115045.52
         },
         {
           "date": "2024-09-30",
-          "strategy": 1.2999512039999999,
+          "strategy": 1.2849932720000001,
           "benchmark": 1.1226941532076107,
-          "excess": 1.139334979919854,
-          "equity": 1299951.204
+          "excess": 1.1252405950146824,
+          "equity": 1284993.272
         },
         {
           "date": "2024-10-31",
-          "strategy": 1.2594137760000002,
+          "strategy": 1.2337083640000002,
           "benchmark": 1.1348856674509196,
-          "excess": 1.0644337909873993,
-          "equity": 1259413.776
+          "excess": 1.0402424519566433,
+          "equity": 1233708.364
         },
         {
           "date": "2024-11-30",
-          "strategy": 1.274090216,
+          "strategy": 1.259801848,
           "benchmark": 1.1294766924856192,
-          "excess": 1.0724732700084136,
-          "equity": 1274090.216
+          "excess": 1.0579331044320324,
+          "equity": 1259801.848
         },
         {
           "date": "2024-12-31",
-          "strategy": 1.302754156,
+          "strategy": 1.309675848,
           "benchmark": 1.1662456157842145,
-          "excess": 1.059488055261511,
-          "equity": 1302754.156
+          "excess": 1.0624237958367042,
+          "equity": 1309675.848
         },
         {
           "date": "2025-01-31",
-          "strategy": 1.268871156,
+          "strategy": 1.273633848,
           "benchmark": 1.1198649236002634,
-          "excess": 1.0729630560587735,
-          "equity": 1268871.156
+          "excess": 1.0741579311303489,
+          "equity": 1273633.848
         },
         {
           "date": "2025-02-28",
-          "strategy": 1.246795156,
+          "strategy": 1.270517848,
           "benchmark": 1.1529121886656621,
-          "excess": 1.0227790938110684,
-          "equity": 1246795.156
+          "excess": 1.039530446290593,
+          "equity": 1270517.848
         },
         {
           "date": "2025-03-31",
-          "strategy": 1.268572156,
+          "strategy": 1.289433848,
           "benchmark": 1.1400103681311122,
-          "excess": 1.0504882030988798,
-          "equity": 1268572.156
+          "excess": 1.064904479636651,
+          "equity": 1289433.848
         },
         {
           "date": "2025-04-30",
-          "strategy": 1.244376928,
+          "strategy": 1.264775848,
           "benchmark": 1.1020241730040756,
-          "excess": 1.0638447727158322,
-          "equity": 1244376.928
+          "excess": 1.0778167961813148,
+          "equity": 1264775.848
         },
         {
           "date": "2025-05-31",
-          "strategy": 1.294457408,
+          "strategy": 1.306405752,
           "benchmark": 1.1238153438300391,
-          "excess": 1.0842921756804464,
-          "equity": 1294457.408
+          "excess": 1.090888105655092,
+          "equity": 1306405.752
         },
         {
           "date": "2025-06-30",
-          "strategy": 1.299805408,
+          "strategy": 1.317844752,
           "benchmark": 1.1441937531805735,
-          "excess": 1.068700151613803,
-          "equity": 1299805.408
+          "excess": 1.0801969682591213,
+          "equity": 1317844.752
         },
         {
           "date": "2025-07-31",
-          "strategy": 1.328773556,
+          "strategy": 1.3281049839999999,
           "benchmark": 1.2087672991409542,
-          "excess": 1.0337443682361485,
-          "equity": 1328773.556
+          "excess": 1.030077596321362,
+          "equity": 1328104.984
         },
         {
           "date": "2025-08-31",
-          "strategy": 1.3426674920000001,
+          "strategy": 1.326603808,
           "benchmark": 1.300482881025898,
-          "excess": 0.9682203151874452,
-          "equity": 1342667.492
+          "excess": 0.9538271555947081,
+          "equity": 1326603.808
         },
         {
           "date": "2025-09-30",
-          "strategy": 1.289906752,
+          "strategy": 1.26850924,
           "benchmark": 1.3512948080774974,
-          "excess": 0.8923607400357142,
-          "equity": 1289906.752
+          "excess": 0.8749825681414471,
+          "equity": 1268509.24
         },
         {
           "date": "2025-10-31",
-          "strategy": 1.314944532,
+          "strategy": 1.3104144439999998,
           "benchmark": 1.3724828446014312,
-          "excess": 0.8925126876331293,
-          "equity": 1314944.532
+          "excess": 0.886968301380781,
+          "equity": 1310414.444
         },
         {
           "date": "2025-11-30",
-          "strategy": 1.3092455319999998,
+          "strategy": 1.312662604,
           "benchmark": 1.3167378247425083,
-          "excess": 0.9246713042688325,
-          "equity": 1309245.532
+          "excess": 0.9245825616827483,
+          "equity": 1312662.604
         },
         {
           "date": "2025-12-31",
-          "strategy": 1.325608532,
+          "strategy": 1.3314759760000001,
           "benchmark": 1.3590528984827914,
-          "excess": 0.9063691021874173,
-          "equity": 1325608.532
+          "excess": 0.9079518955234004,
+          "equity": 1331475.976
         },
         {
           "date": "2026-01-31",
-          "strategy": 1.2807932679999998,
+          "strategy": 1.2963739040000002,
           "benchmark": 1.3784912472122723,
-          "excess": 0.8625437698770148,
-          "equity": 1280793.268
+          "excess": 0.870670211361511,
+          "equity": 1296373.904
         },
         {
           "date": "2026-02-28",
-          "strategy": 1.2886522679999999,
+          "strategy": 1.307131904,
           "benchmark": 1.3712585972540838,
-          "excess": 0.8719984659247905,
-          "equity": 1288652.268
+          "excess": 0.8821573455672229,
+          "equity": 1307131.904
         },
         {
           "date": "2026-03-31",
-          "strategy": 1.2764217080000002,
+          "strategy": 1.293601932,
           "benchmark": 1.311024232660814,
-          "excess": 0.9019358684400841,
-          "equity": 1276421.708
+          "excess": 0.9118096208431044,
+          "equity": 1293601.932
         },
         {
           "date": "2026-04-30",
-          "strategy": 1.2761877080000001,
+          "strategy": 1.310479932,
           "benchmark": 1.407061863571457,
-          "excess": 0.8390814521005954,
-          "equity": 1276187.708
+          "excess": 0.859602731321788,
+          "equity": 1310479.932
         },
         {
           "date": "2026-05-31",
-          "strategy": 1.257271656,
+          "strategy": 1.286507308,
           "benchmark": 1.406440750526139,
-          "excess": 0.825327348348681,
-          "equity": 1257271.656
+          "excess": 0.8425178995770222,
+          "equity": 1286507.308
         }
       ],
       "admission_diagnostics": {
         "annual_returns": {
-          "2024": 0.302754156,
-          "2025": 0.0473231003108896,
-          "2026": -0.056155881707164235
+          "2024": 0.3096758479999999,
+          "2025": 0.04254026905782182,
+          "2026": -0.03340040422011281
         },
         "end_pending_orders": 0,
         "max_positions": 25,
-        "max_buy_adv_fraction": 0.000737078159054516,
-        "largest_industry_abs_pnl_fraction": 0.16311914389229146,
-        "microcap_abs_pnl_fraction": 0.03658037437745793,
+        "max_buy_adv_fraction": 0.0007631517735963121,
+        "largest_industry_abs_pnl_fraction": 0.22760651519755154,
+        "microcap_abs_pnl_fraction": 0.0,
         "dsr_evaluated": false
       }
     }

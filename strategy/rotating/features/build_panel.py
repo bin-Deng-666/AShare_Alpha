@@ -71,6 +71,14 @@ CANDIDATE_MODEL_INPUT_FEATURES = tuple(
     f"rank_{feature}" for feature in MODEL_FEATURES
 ) + CONTROL_FEATURES
 MODEL_INPUT_FEATURES = CANDIDATE_MODEL_INPUT_FEATURES
+INDUSTRY_SIZE_MODEL_FEATURES = (
+    "ep_industry_size_residual",
+    "bp_industry_size_residual",
+    "roe_industry_size_residual",
+)
+INDUSTRY_SIZE_MODEL_INPUT_FEATURES = MODEL_INPUT_FEATURES + tuple(
+    f"rank_{feature}" for feature in INDUSTRY_SIZE_MODEL_FEATURES
+)
 ENDPOINT_RETURN_COLUMN = "target_5"
 PATH_RETURN_COLUMN = "target_path_5"
 ENDPOINT_RESIDUAL_COLUMN = "target_residual"
@@ -78,6 +86,121 @@ PATH_RESIDUAL_COLUMN = "target_path_residual"
 ENDPOINT_TARGET_COLUMN = "target_rank"
 PATH_TARGET_COLUMN = "target_path_rank"
 MODEL_TARGET_COLUMN = ENDPOINT_TARGET_COLUMN
+
+
+def _add_daily_cross_section_rank(frame: pd.DataFrame, feature: str) -> None:
+    """Add the frozen winsorized ``[-1, 1]`` daily rank for one feature."""
+    eligible = frame["eligible"].fillna(False).astype(bool)
+    eligible_values = pd.to_numeric(frame[feature], errors="coerce").where(
+        eligible
+    )
+    daily = eligible_values.groupby(frame["date"], sort=False)
+    lower = daily.transform(lambda values: values.quantile(0.01))
+    upper = daily.transform(lambda values: values.quantile(0.99))
+    winsorized = eligible_values.clip(lower=lower, upper=upper)
+    ordinal = winsorized.groupby(frame["date"], sort=False).rank(method="average")
+    count = daily.transform("count")
+    frame[f"rank_{feature}"] = np.where(
+        winsorized.notna(),
+        np.where(count.gt(1), 2.0 * (ordinal - 1.0) / (count - 1.0) - 1.0, 0.0),
+        np.nan,
+    )
+
+
+def add_industry_size_residual_features(
+    source: pd.DataFrame,
+    *,
+    min_industry_observations: int = 5,
+    copy: bool = True,
+) -> pd.DataFrame:
+    """Add the preregistered PIT industry/size-relative value-quality bundle."""
+    required = {
+        "date",
+        "industry",
+        "eligible",
+        "log_float_market_cap",
+        "ep",
+        "bp",
+        "roe",
+    }
+    missing = required.difference(source.columns)
+    if missing:
+        raise ValueError(
+            "industry-size feature source missing columns: "
+            + ", ".join(sorted(missing))
+        )
+    if min_industry_observations < 2:
+        raise ValueError("min_industry_observations must be at least 2")
+
+    frame = source.copy() if copy else source
+    frame["date"] = pd.to_datetime(frame["date"]).dt.normalize()
+    industry = frame["industry"].astype("string").str.strip()
+    normalized_industry = industry.mask(
+        industry.isna() | industry.eq(""), "UNKNOWN"
+    ).astype(str)
+    size = pd.to_numeric(frame["log_float_market_cap"], errors="coerce").replace(
+        [np.inf, -np.inf], np.nan
+    )
+    eligible = frame["eligible"].fillna(False).astype(bool)
+    known_industry = normalized_industry.ne("UNKNOWN")
+    industry_keys = [frame["date"], normalized_industry]
+
+    ep = pd.to_numeric(frame["ep"], errors="coerce").replace(
+        [np.inf, -np.inf], np.nan
+    )
+    bp = pd.to_numeric(frame["bp"], errors="coerce").replace(
+        [np.inf, -np.inf], np.nan
+    )
+    raw_inputs = {
+        "ep_industry_size_residual": np.log(ep.where(ep.gt(0.0))),
+        "bp_industry_size_residual": np.log(bp.where(bp.gt(0.0))),
+        "roe_industry_size_residual": pd.to_numeric(
+            frame["roe"], errors="coerce"
+        ).replace([np.inf, -np.inf], np.nan),
+    }
+    for output, raw_values in raw_inputs.items():
+        # The frozen formula estimates 1/99 cutoffs across every eligible,
+        # non-missing raw observation. Industry and size exclusions are
+        # deliberately applied only after those cutoffs are fixed.
+        eligible_values = raw_values.where(eligible)
+        daily = eligible_values.groupby(frame["date"], sort=False)
+        lower = daily.transform(lambda group: group.quantile(0.01))
+        upper = daily.transform(lambda group: group.quantile(0.99))
+        winsorized = eligible_values.clip(lower=lower, upper=upper)
+        industry_values = winsorized.where(known_industry & size.notna())
+
+        industry_count = industry_values.groupby(
+            industry_keys, sort=False
+        ).transform("count")
+        valid = industry_values.notna() & industry_count.ge(
+            min_industry_observations
+        )
+        response = industry_values.where(valid)
+        valid_size = size.where(valid)
+
+        # Frisch-Waugh-Lovell: demeaning both variables within industry and
+        # fitting one common size slope is exactly the registered one-hot +
+        # size OLS. Global z-scoring of size changes the coefficient scale,
+        # not the fitted values or residuals.
+        response_demeaned = response - response.groupby(
+            industry_keys, sort=False
+        ).transform("mean")
+        size_demeaned = valid_size - valid_size.groupby(
+            industry_keys, sort=False
+        ).transform("mean")
+        covariance_numerator = (response_demeaned * size_demeaned).groupby(
+            frame["date"], sort=False
+        ).transform("sum")
+        size_denominator = size_demeaned.pow(2.0).groupby(
+            frame["date"], sort=False
+        ).transform("sum")
+        size_slope = covariance_numerator / size_denominator.replace(0.0, np.nan)
+        frame[output] = (
+            response_demeaned - size_slope.fillna(0.0) * size_demeaned
+        ).where(valid)
+        _add_daily_cross_section_rank(frame, output)
+
+    return frame
 
 
 def build_factor_panel(
@@ -90,6 +213,7 @@ def build_factor_panel(
     min_tradable_observations: int | None = None,
     min_median_amount: float = 50_000_000.0,
     min_float_market_cap: float = 2_000_000_000.0,
+    include_industry_size_features: bool = False,
 ) -> pd.DataFrame:
     """Return signal rows after computing rolling fields on the full history."""
     if isinstance(source, pd.DataFrame):
@@ -307,6 +431,9 @@ def build_factor_panel(
     frame["log_float_market_cap"] = np.log(
         frame["float_market_cap"].where(frame["float_market_cap"].gt(0.0))
     )
+    if "industry" not in frame:
+        frame["industry"] = "UNKNOWN"
+    frame["industry"] = frame["industry"].fillna("UNKNOWN").astype(str)
     required_tradable = (
         min(15, min_history)
         if min_tradable_observations is None
@@ -321,19 +448,10 @@ def build_factor_panel(
         & frame["history_count"].ge(min_history)
         & frame["history_count"].ge(min_listing_sessions)
     )
+    if include_industry_size_features:
+        frame = add_industry_size_residual_features(frame, copy=False)
     for feature in MODEL_FEATURES:
-        eligible_values = frame[feature].where(frame["eligible"])
-        daily = eligible_values.groupby(frame["date"], sort=False)
-        lower = daily.transform(lambda values: values.quantile(0.01))
-        upper = daily.transform(lambda values: values.quantile(0.99))
-        winsorized = eligible_values.clip(lower=lower, upper=upper)
-        ordinal = winsorized.groupby(frame["date"], sort=False).rank(method="average")
-        count = daily.transform("count")
-        frame[f"rank_{feature}"] = np.where(
-            winsorized.notna(),
-            np.where(count.gt(1), 2.0 * (ordinal - 1.0) / (count - 1.0) - 1.0, 0.0),
-            np.nan,
-        )
+        _add_daily_cross_section_rank(frame, feature)
     entry_date_map = {
         market_dates[index]: market_dates[index + 1]
         for index in range(max(0, len(market_dates) - 1))
@@ -446,10 +564,6 @@ def build_factor_panel(
             "_can_sell_open",
         ]
     )
-    if "industry" not in frame:
-        frame["industry"] = "UNKNOWN"
-    frame["industry"] = frame["industry"].fillna("UNKNOWN").astype(str)
-
     def add_neutralized_target(
         target_column: str, residual_column: str, rank_column: str
     ) -> None:

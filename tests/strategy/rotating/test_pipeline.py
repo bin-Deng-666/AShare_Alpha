@@ -6,6 +6,9 @@ import pandas as pd
 import pytest
 
 from strategy.rotating import pipeline
+from strategy.rotating.experiments import (
+    build_industry_size_diagnostics as industry_diagnostics,
+)
 
 
 def test_score_panel_dataset_rejects_mixed_specs_in_one_score_root(tmp_path) -> None:
@@ -66,6 +69,171 @@ def test_build_panel_dataset_never_reads_after_explicit_data_cutoff(
 
     assert requested
     assert max(end for _, end in requested) <= pd.Timestamp("2023-12-31")
+
+
+def test_industry_size_augmentation_only_adds_features_to_frozen_partitions(
+    tmp_path, monkeypatch
+) -> None:
+    size = pd.Series(range(12), dtype=float) / 10.0 + 23.0
+    frozen = pd.DataFrame(
+        {
+            "code": [f"000{index:03d}" for index in range(12)],
+            "date": pd.Timestamp("2023-12-29"),
+            "industry": ["银行"] * 6 + ["制造"] * 6,
+            "eligible": True,
+            "log_float_market_cap": size,
+            "ep": 0.05 + size / 1_000.0,
+            "bp": 0.4 + size / 100.0,
+            "roe": 0.08 + size / 1_000.0,
+            "target_rank": pd.Series(range(12), dtype=float) / 11.0,
+            "label_available_date": pd.Timestamp("2023-12-29"),
+        }
+    )
+    input_root = tmp_path / "frozen"
+    source_path = input_root / "year=2023" / "panel.parquet"
+    source_path.parent.mkdir(parents=True)
+    poisoned = frozen.iloc[[0]].assign(
+        code="poisoned",
+        date=pd.Timestamp("2023-12-30"),
+    )
+    pd.concat([frozen, poisoned], ignore_index=True).to_parquet(
+        source_path, index=False
+    )
+    real_read_parquet = pd.read_parquet
+    observed_filters: list[list[tuple[str, str, pd.Timestamp]]] = []
+
+    def guarded_read_parquet(path, *args, **kwargs):
+        filters = kwargs.get("filters")
+        assert filters is not None
+        observed_filters.append(filters)
+        loaded = real_read_parquet(path, *args, **kwargs)
+        assert "poisoned" not in loaded["code"].tolist()
+        return loaded
+
+    monkeypatch.setattr(pipeline.pd, "read_parquet", guarded_read_parquet)
+
+    outputs = pipeline.augment_panel_dataset_with_industry_size_features(
+        "2023-12-29",
+        "2023-12-29",
+        input_root=input_root,
+        output_root=tmp_path / "candidate",
+    )
+
+    candidate = real_read_parquet(outputs[0])
+    pd.testing.assert_frame_equal(
+        candidate[list(frozen.columns)],
+        frozen,
+        check_dtype=False,
+    )
+    assert candidate["rank_ep_industry_size_residual"].notna().all()
+    assert observed_filters == [
+        [
+            ("date", ">=", pd.Timestamp("2023-12-29")),
+            ("date", "<=", pd.Timestamp("2023-12-29")),
+        ]
+    ]
+    assert "rank_ep_industry_size_residual" not in real_read_parquet(source_path)
+
+
+def test_industry_size_augmentation_rejects_in_place_mutation(tmp_path) -> None:
+    with pytest.raises(ValueError, match="separate output root"):
+        pipeline.augment_panel_dataset_with_industry_size_features(
+            "2023-01-01",
+            "2023-12-31",
+            input_root=tmp_path / "panel",
+            output_root=tmp_path / "panel",
+        )
+
+
+def test_backtest_rejects_a_mismatched_requested_feature_set(tmp_path) -> None:
+    score_root = tmp_path / "scores"
+    score_root.mkdir()
+    (score_root / pipeline.SCORE_SPEC_FILENAME).write_text(
+        json.dumps(
+            {
+                "feature_columns": ["rank_ret_5"],
+                "target_column": "target_rank",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="requested feature set"):
+        pipeline.run_backtest_dataset(
+            "2023-01-01",
+            "2023-12-31",
+            score_root=score_root,
+            report_root=tmp_path / "reports",
+            expected_feature_columns=("rank_ret_5", "rank_ret_20"),
+        )
+
+
+def test_industry_size_gate_rejects_incomplete_year_and_cohort_coverage(
+    tmp_path,
+) -> None:
+    baseline_root = tmp_path / "baseline"
+    candidate_root = tmp_path / "candidate"
+    baseline_root.mkdir()
+    candidate_root.mkdir()
+
+    def performance(*, candidate: bool) -> dict:
+        annual_return = 0.20 if candidate else 0.10
+        sharpe = 1.0 if candidate else 0.5
+        yearly = [
+            {
+                "year": year,
+                "strategy": annual_return,
+                "strategy_sharpe": sharpe,
+            }
+            for year in (2021, 2022)
+        ]
+        cohorts = {
+            str(index): {"rank_ic_mean": 0.10}
+            for index in range(4)
+        }
+        scenario = {
+            "returns": {"ann_return": annual_return},
+            "risk": {"sharpe": sharpe, "max_drawdown": -0.10},
+            "trading": {"turnover_ann": 1.0},
+            "yearly": yearly,
+        }
+        return {
+            "scenarios": {
+                "gbrt_historical": scenario,
+                "gbrt_flat_20bp_roundtrip": scenario,
+            },
+            "score_diagnostics": {
+                "gbrt_score": {
+                    "rank_ic_mean": 0.10,
+                    "rank_ic_by_cohort": cohorts,
+                }
+            },
+        }
+
+    (baseline_root / "PERFORMANCE.json").write_text(
+        json.dumps(performance(candidate=False)), encoding="utf-8"
+    )
+    (candidate_root / "PERFORMANCE.json").write_text(
+        json.dumps(performance(candidate=True)), encoding="utf-8"
+    )
+    pd.DataFrame(
+        {"date": ["2023-01-03", "2023-01-04"], "daily_ret": [0.0, 0.0]}
+    ).to_csv(baseline_root / "equity_gbrt_historical.csv", index=False)
+    pd.DataFrame(
+        {"date": ["2023-01-03", "2023-01-04"], "daily_ret": [0.01, 0.01]}
+    ).to_csv(candidate_root / "equity_gbrt_historical.csv", index=False)
+
+    result = industry_diagnostics._gate_evaluation(
+        baseline_report_root=baseline_root,
+        candidate_report_root=candidate_root,
+    )
+
+    assert not result["gates"]["complete_three_year_coverage"]
+    assert not result["gates"]["at_least_two_yearly_double_wins"]
+    assert not result["gates"]["complete_five_cohort_coverage"]
+    assert not result["gates"]["all_five_candidate_cohorts_positive"]
+    assert not result["all_gates_passed"]
+    assert result["experiment_decision"] == "rejected_on_development"
 
 
 def test_backtest_can_report_the_single_fixed_market_gate_candidate(
@@ -246,10 +414,13 @@ def test_run_backtest_dataset_does_not_cross_the_public_end_date(
         str(end.date()),
         score_root=score_root,
         report_root=tmp_path / "reports",
+        experiment_decision="rejected_on_development",
     )
 
     assert observed == {"start": pd.Timestamp("2024-01-02"), "end": end}
     assert payload["score_specification"]["feature_columns"] == ["rank_ret_5"]
+    assert payload["admission_status"] == "rejected_on_development"
+    assert payload["experiment_decision"] == "rejected_on_development"
 
 
 def test_flat_cost_stresses_hold_the_trade_path_fixed(tmp_path, monkeypatch) -> None:

@@ -18,6 +18,7 @@ from strategy.rotating.features.build_panel import (
     ENDPOINT_TARGET_COLUMN,
     MODEL_INPUT_FEATURES,
     MODEL_TARGET_COLUMN,
+    add_industry_size_residual_features,
     build_factor_panel,
 )
 from strategy.rotating.features.market_regime import (
@@ -113,6 +114,7 @@ def build_panel_dataset(
     *,
     output_root: str | Path = PANEL_ROOT,
     data_cutoff: str | None = None,
+    include_industry_size_features: bool = False,
 ) -> list[Path]:
     """Build year partitions with sufficient pre-history and future label bars."""
     first = pd.Timestamp(start).normalize()
@@ -134,9 +136,47 @@ def build_panel_dataset(
             str(partition_start.date()),
             str(partition_end.date()),
             source=source,
+            include_industry_size_features=include_industry_size_features,
         )
         output = root / f"year={year}" / "panel.parquet"
         _atomic_parquet(panel, output)
+        outputs.append(output)
+    return outputs
+
+
+def augment_panel_dataset_with_industry_size_features(
+    start: str,
+    end: str,
+    *,
+    input_root: str | Path,
+    output_root: str | Path,
+) -> list[Path]:
+    """Add the preregistered bundle to frozen panel partitions without source reads."""
+    first = pd.Timestamp(start).normalize()
+    last = pd.Timestamp(end).normalize()
+    source_root = Path(input_root)
+    target_root = Path(output_root)
+    if source_root.resolve() == target_root.resolve():
+        raise ValueError("industry-size augmentation requires a separate output root")
+
+    outputs: list[Path] = []
+    for year in range(first.year, last.year + 1):
+        partition_start = max(first, pd.Timestamp(year=year, month=1, day=1))
+        partition_end = min(last, pd.Timestamp(year=year, month=12, day=31))
+        source_path = source_root / f"year={year}" / "panel.parquet"
+        if not source_path.exists():
+            raise FileNotFoundError(f"frozen panel partition not found: {source_path}")
+        panel = pd.read_parquet(
+            source_path,
+            filters=[
+                ("date", ">=", partition_start),
+                ("date", "<=", partition_end),
+            ],
+        )
+        panel["date"] = pd.to_datetime(panel["date"]).dt.normalize()
+        augmented = add_industry_size_residual_features(panel, copy=False)
+        output = target_root / f"year={year}" / "panel.parquet"
+        _atomic_parquet(augmented, output)
         outputs.append(output)
     return outputs
 
@@ -695,10 +735,23 @@ def run_backtest_dataset(
     params: Params = DEFAULT_PARAMS,
     initial_capital: float = 1_000_000.0,
     include_market_gate_candidate: bool = False,
+    expected_feature_columns: tuple[str, ...] | None = None,
+    experiment_decision: str | None = None,
 ) -> dict[str, Any]:
     """Run realistic execution plus fixed-path 20/40/80bp cost stresses."""
     first = pd.Timestamp(start).normalize()
     last = pd.Timestamp(end).normalize()
+    score_specification = _load_score_specification(score_root)
+    if expected_feature_columns is not None:
+        actual_features = (
+            tuple(score_specification.get("feature_columns", []))
+            if score_specification is not None
+            else None
+        )
+        if actual_features != tuple(expected_feature_columns):
+            raise ValueError(
+                "score specification does not match the requested feature set"
+            )
     scores = pd.read_parquet(
         Path(score_root),
         filters=[("date", ">=", first), ("date", "<=", last)],
@@ -852,9 +905,13 @@ def run_backtest_dataset(
         "start": str(first.date()),
         "end": str(last.date()),
         "selected_research_score_column": SELECTED_RESEARCH_SCORE_COLUMN,
-        "admission_status": "research_only_forward_validation_required",
+        "admission_status": (
+            experiment_decision
+            or "research_only_forward_validation_required"
+        ),
+        "experiment_decision": experiment_decision,
         "params": asdict(params),
-        "score_specification": _load_score_specification(score_root),
+        "score_specification": score_specification,
         "score_diagnostics": _score_diagnostics(scores, evaluation_end=last),
         "model_target_diagnostics": _score_diagnostics(
             scores,

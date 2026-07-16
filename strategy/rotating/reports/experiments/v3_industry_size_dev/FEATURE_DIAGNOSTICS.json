@@ -1,0 +1,589 @@
+{
+  "experiment": "20260716_industry_size_value_quality_race",
+  "start": "2021-01-01",
+  "end": "2023-12-31",
+  "physical_read_cutoff": "2023-12-31",
+  "label": "T+1 open through T+6 open endpoint return",
+  "correlation_method": "mean of daily cross-sectional Spearman correlations; rank_* inputs are already average-tie ranks and binary controls are affine to their average-tie ranks",
+  "feature_schema": {
+    "baseline": [
+      "rank_ret_5",
+      "rank_ret_20",
+      "rank_ret_60",
+      "rank_mom_20_5",
+      "rank_mom_120_20",
+      "rank_reversal_20",
+      "rank_vol_20",
+      "rank_vol_60",
+      "rank_maxret_20",
+      "rank_drawdown_60",
+      "rank_trend_quality_60",
+      "rank_turnover_abnormal_20_250",
+      "rank_turnover_cv_20",
+      "rank_amount_ratio_5_20",
+      "rank_amount_ratio_20_60",
+      "rank_amount_cv_20",
+      "rank_amihud_20",
+      "rank_adv_20",
+      "rank_ep",
+      "rank_bp",
+      "rank_roe",
+      "rank_log_float_market_cap",
+      "rank_overnight_gap_mean_5",
+      "rank_close_location_mean_10",
+      "rank_trend_r2_20",
+      "rank_trend_residual_20",
+      "rank_downside_vol_20",
+      "rank_range_vol_10",
+      "rank_price_volume_corr_20",
+      "rank_turnover_shock_5_20",
+      "ep_missing",
+      "bp_missing",
+      "roe_missing",
+      "board_star",
+      "board_chinext"
+    ],
+    "candidate": [
+      "rank_ret_5",
+      "rank_ret_20",
+      "rank_ret_60",
+      "rank_mom_20_5",
+      "rank_mom_120_20",
+      "rank_reversal_20",
+      "rank_vol_20",
+      "rank_vol_60",
+      "rank_maxret_20",
+      "rank_drawdown_60",
+      "rank_trend_quality_60",
+      "rank_turnover_abnormal_20_250",
+      "rank_turnover_cv_20",
+      "rank_amount_ratio_5_20",
+      "rank_amount_ratio_20_60",
+      "rank_amount_cv_20",
+      "rank_amihud_20",
+      "rank_adv_20",
+      "rank_ep",
+      "rank_bp",
+      "rank_roe",
+      "rank_log_float_market_cap",
+      "rank_overnight_gap_mean_5",
+      "rank_close_location_mean_10",
+      "rank_trend_r2_20",
+      "rank_trend_residual_20",
+      "rank_downside_vol_20",
+      "rank_range_vol_10",
+      "rank_price_volume_corr_20",
+      "rank_turnover_shock_5_20",
+      "ep_missing",
+      "bp_missing",
+      "roe_missing",
+      "board_star",
+      "board_chinext",
+      "rank_ep_industry_size_residual",
+      "rank_bp_industry_size_residual",
+      "rank_roe_industry_size_residual"
+    ],
+    "new": [
+      "rank_ep_industry_size_residual",
+      "rank_bp_industry_size_residual",
+      "rank_roe_industry_size_residual"
+    ]
+  },
+  "frozen_input_fingerprints": [
+    {
+      "path": "strategy/rotating/cache/experiments/v2_dev_panel/year=2018/panel.parquet",
+      "size_bytes": 395024986,
+      "sha256": "02fe5d8b8bba92af5e078dcab332b378f97dbe14a30bda25649c54fa86e50de3"
+    },
+    {
+      "path": "strategy/rotating/cache/experiments/v2_dev_panel/year=2019/panel.parquet",
+      "size_bytes": 436739814,
+      "sha256": "be1788534a737f560dcd0fb8c3956bdd70c57519795272396de4440076aee9a0"
+    },
+    {
+      "path": "strategy/rotating/cache/experiments/v2_dev_panel/year=2020/panel.parquet",
+      "size_bytes": 507495245,
+      "sha256": "975c2b085e6d9e240d8ae42d6932489b6cb8460a57daa6a03bf34d67d23e5523"
+    },
+    {
+      "path": "strategy/rotating/cache/experiments/v2_dev_panel/year=2021/panel.parquet",
+      "size_bytes": 559280684,
+      "sha256": "a2a96965de557a3a454466744973dff378e820445eab60623161956eff15d9c1"
+    },
+    {
+      "path": "strategy/rotating/cache/experiments/v2_dev_panel/year=2022/panel.parquet",
+      "size_bytes": 612299825,
+      "sha256": "9d4503e335e518bf4e2efe537161b1d466837e4a2f0915d3b522c1abc6ed0071"
+    },
+    {
+      "path": "strategy/rotating/cache/experiments/v2_dev_panel/year=2023/panel.parquet",
+      "size_bytes": 648774877,
+      "sha256": "14ec6ebb5854853585ba8a53f7d024368f759a265c58b0ba5a1154c712cdfc6f"
+    }
+  ],
+  "identity": {
+    "panel": {
+      "existing_field_count": 112,
+      "years": {
+        "2018": {
+          "baseline_rows": 816745,
+          "candidate_rows": 816745,
+          "candidate_only_keys": 0,
+          "baseline_only_keys": 0,
+          "existing_field_hash_differences": 0
+        },
+        "2019": {
+          "baseline_rows": 884623,
+          "candidate_rows": 884623,
+          "candidate_only_keys": 0,
+          "baseline_only_keys": 0,
+          "existing_field_hash_differences": 0
+        },
+        "2020": {
+          "baseline_rows": 945719,
+          "candidate_rows": 945719,
+          "candidate_only_keys": 0,
+          "baseline_only_keys": 0,
+          "existing_field_hash_differences": 0
+        },
+        "2021": {
+          "baseline_rows": 1058620,
+          "candidate_rows": 1058620,
+          "candidate_only_keys": 0,
+          "baseline_only_keys": 0,
+          "existing_field_hash_differences": 0
+        },
+        "2022": {
+          "baseline_rows": 1146021,
+          "candidate_rows": 1146021,
+          "candidate_only_keys": 0,
+          "baseline_only_keys": 0,
+          "existing_field_hash_differences": 0
+        },
+        "2023": {
+          "baseline_rows": 1209236,
+          "candidate_rows": 1209236,
+          "candidate_only_keys": 0,
+          "baseline_only_keys": 0,
+          "existing_field_hash_differences": 0
+        }
+      }
+    },
+    "scores": {
+      "baseline_rows": 1751687,
+      "candidate_rows": 1751687,
+      "candidate_only_keys": 0,
+      "baseline_only_keys": 0,
+      "factor_score_differences": 0,
+      "target_differences": 0,
+      "label_available_date_differences": 0,
+      "candidate_training_label_leaks": 0
+    }
+  },
+  "coverage": {
+    "eligible_rows": 1751687,
+    "features": {
+      "rank_ep_industry_size_residual": {
+        "valid_rows": 1424610,
+        "coverage": 0.8132788563253595,
+        "daily_valid_rows": {
+          "min": 1469,
+          "median": 1983.0,
+          "max": 2341
+        },
+        "daily_valid_industries": {
+          "min": 46,
+          "median": 53.0,
+          "max": 61
+        },
+        "small_industry_excluded_rows": 38494
+      },
+      "rank_bp_industry_size_residual": {
+        "valid_rows": 1713418,
+        "coverage": 0.9781530604497265,
+        "daily_valid_rows": {
+          "min": 1707,
+          "median": 2424.0,
+          "max": 2822
+        },
+        "daily_valid_industries": {
+          "min": 50,
+          "median": 60.0,
+          "max": 66
+        },
+        "small_industry_excluded_rows": 31010
+      },
+      "rank_roe_industry_size_residual": {
+        "valid_rows": 1424260,
+        "coverage": 0.8130790489396793,
+        "daily_valid_rows": {
+          "min": 1469,
+          "median": 1982.0,
+          "max": 2339
+        },
+        "daily_valid_industries": {
+          "min": 46,
+          "median": 53.0,
+          "max": 61
+        },
+        "small_industry_excluded_rows": 38494
+      }
+    }
+  },
+  "new_by_all_existing_mean_daily_spearman": {
+    "rank_ep_industry_size_residual": {
+      "rank_ret_5": -0.03064335709983368,
+      "rank_ret_20": -0.07083944622344049,
+      "rank_ret_60": -0.11079051712455455,
+      "rank_mom_20_5": -0.05921620250894485,
+      "rank_mom_120_20": -0.10510783814070056,
+      "rank_reversal_20": 0.07083944622344049,
+      "rank_vol_20": -0.20349741634296423,
+      "rank_vol_60": -0.22391423927153392,
+      "rank_maxret_20": -0.18303653056742505,
+      "rank_drawdown_60": 0.005704180394948801,
+      "rank_trend_quality_60": -0.11709356843874663,
+      "rank_turnover_abnormal_20_250": -0.04300253967482864,
+      "rank_turnover_cv_20": -0.0162842834062374,
+      "rank_amount_ratio_5_20": -0.020291429279098726,
+      "rank_amount_ratio_20_60": -0.048687700292349756,
+      "rank_amount_cv_20": -0.027664167833053328,
+      "rank_amihud_20": 0.014162534947759176,
+      "rank_adv_20": -0.13233534710637043,
+      "rank_ep": 0.8278914655201344,
+      "rank_bp": 0.41274988269221835,
+      "rank_roe": 0.49940608541434184,
+      "rank_log_float_market_cap": -0.0017336119552108199,
+      "rank_overnight_gap_mean_5": 0.034088757580386764,
+      "rank_close_location_mean_10": 0.0019413902986037293,
+      "rank_trend_r2_20": 0.0023768483301289524,
+      "rank_trend_residual_20": -0.0029053400821888405,
+      "rank_downside_vol_20": -0.15716583446442317,
+      "rank_range_vol_10": -0.26417812237013566,
+      "rank_price_volume_corr_20": -0.049006146946432884,
+      "rank_turnover_shock_5_20": -0.009201472849287915,
+      "ep_missing": null,
+      "bp_missing": 0.0010708945323097425,
+      "roe_missing": 0.0010708945323097425,
+      "board_star": -0.09818799170976295,
+      "board_chinext": -0.10765717680405407
+    },
+    "rank_bp_industry_size_residual": {
+      "rank_ret_5": -0.01809889141419131,
+      "rank_ret_20": -0.04613704769126927,
+      "rank_ret_60": -0.07231963652243513,
+      "rank_mom_20_5": -0.03797403687939802,
+      "rank_mom_120_20": -0.07691095140238391,
+      "rank_reversal_20": 0.04613704769126927,
+      "rank_vol_20": -0.30397827928436194,
+      "rank_vol_60": -0.35941233292235564,
+      "rank_maxret_20": -0.24841811498387067,
+      "rank_drawdown_60": 0.08614818911706125,
+      "rank_trend_quality_60": -0.08942457672696462,
+      "rank_turnover_abnormal_20_250": -0.003741784997628654,
+      "rank_turnover_cv_20": 0.015771516311394174,
+      "rank_amount_ratio_5_20": -0.03118913248762471,
+      "rank_amount_ratio_20_60": -0.03778425222649892,
+      "rank_amount_cv_20": 0.006585585511413466,
+      "rank_amihud_20": -0.002608067101452136,
+      "rank_adv_20": -0.16515385730957582,
+      "rank_ep": 0.43183270164734244,
+      "rank_bp": 0.8325775730203722,
+      "rank_roe": -0.28708751444369285,
+      "rank_log_float_market_cap": 0.011896495784250219,
+      "rank_overnight_gap_mean_5": 0.039141185203657794,
+      "rank_close_location_mean_10": 0.000595741648530932,
+      "rank_trend_r2_20": -0.007953883572885264,
+      "rank_trend_residual_20": -0.006357898010041091,
+      "rank_downside_vol_20": -0.2576434726078687,
+      "rank_range_vol_10": -0.36648618706622815,
+      "rank_price_volume_corr_20": -0.01570517091601687,
+      "rank_turnover_shock_5_20": -0.02023323058088712,
+      "ep_missing": -0.011169322177795206,
+      "bp_missing": null,
+      "roe_missing": -0.011169322177795206,
+      "board_star": -0.1771668976836349,
+      "board_chinext": -0.15944762295168033
+    },
+    "rank_roe_industry_size_residual": {
+      "rank_ret_5": -0.019787788773269938,
+      "rank_ret_20": -0.04221679001543306,
+      "rank_ret_60": -0.07234671329031893,
+      "rank_mom_20_5": -0.03447492522730363,
+      "rank_mom_120_20": -0.06725797113549496,
+      "rank_reversal_20": 0.04221679001543306,
+      "rank_vol_20": 0.04972824719410699,
+      "rank_vol_60": 0.08034374209226323,
+      "rank_maxret_20": 0.02227673667861272,
+      "rank_drawdown_60": -0.08034694149338012,
+      "rank_trend_quality_60": -0.06116549324133467,
+      "rank_turnover_abnormal_20_250": -0.04726325466417383,
+      "rank_turnover_cv_20": -0.03336934347228384,
+      "rank_amount_ratio_5_20": 0.0031675038266313566,
+      "rank_amount_ratio_20_60": -0.01608869030120015,
+      "rank_amount_cv_20": -0.0436587456023903,
+      "rank_amihud_20": 0.03131227363025231,
+      "rank_adv_20": -0.006635403963178187,
+      "rank_ep": 0.4587731944032982,
+      "rank_bp": -0.24539176344068325,
+      "rank_roe": 0.831536680764108,
+      "rank_log_float_market_cap": -0.016312267691277044,
+      "rank_overnight_gap_mean_5": 0.0017550823628226231,
+      "rank_close_location_mean_10": 0.006372443301364602,
+      "rank_trend_r2_20": 0.008600050314143275,
+      "rank_trend_residual_20": 0.001581165121956378,
+      "rank_downside_vol_20": 0.05747789795083429,
+      "rank_range_vol_10": 0.041210888082185114,
+      "rank_price_volume_corr_20": -0.05345181849640658,
+      "rank_turnover_shock_5_20": 0.005259700292154056,
+      "ep_missing": null,
+      "bp_missing": null,
+      "roe_missing": null,
+      "board_star": 0.05361457344258059,
+      "board_chinext": 0.0431959755114147
+    }
+  },
+  "new_feature_mean_daily_spearman": {
+    "rank_ep_industry_size_residual": {
+      "rank_ep_industry_size_residual": 1.0,
+      "rank_bp_industry_size_residual": 0.495179649653839,
+      "rank_roe_industry_size_residual": 0.5442269849479987
+    },
+    "rank_bp_industry_size_residual": {
+      "rank_ep_industry_size_residual": 0.495179649653839,
+      "rank_bp_industry_size_residual": 1.0,
+      "rank_roe_industry_size_residual": -0.32705834085637786
+    },
+    "rank_roe_industry_size_residual": {
+      "rank_ep_industry_size_residual": 0.5442269849479987,
+      "rank_bp_industry_size_residual": -0.32705834085637786,
+      "rank_roe_industry_size_residual": 1.0
+    }
+  },
+  "value_quality_six_feature_mean_daily_correlation": {
+    "columns": [
+      "rank_ep",
+      "rank_bp",
+      "rank_roe",
+      "rank_ep_industry_size_residual",
+      "rank_bp_industry_size_residual",
+      "rank_roe_industry_size_residual"
+    ],
+    "matrix": [
+      [
+        1.0,
+        0.5653483738773307,
+        0.5593068629982225,
+        0.8278914655201344,
+        0.43183270164734244,
+        0.4587731944032982
+      ],
+      [
+        0.5653483738773306,
+        1.0,
+        -0.2858429358277328,
+        0.41274988269221835,
+        0.8325775730203722,
+        -0.24539176344068322
+      ],
+      [
+        0.5593068629982225,
+        -0.2858429358277328,
+        1.0,
+        0.49940608541434184,
+        -0.28708751444369285,
+        0.831536680764108
+      ],
+      [
+        0.8278914655201344,
+        0.41274988269221835,
+        0.49940608541434184,
+        1.0,
+        0.495179649653839,
+        0.5442269849479987
+      ],
+      [
+        0.43183270164734244,
+        0.8325775730203722,
+        -0.28708751444369285,
+        0.495179649653839,
+        1.0,
+        -0.32705834085637786
+      ],
+      [
+        0.4587731944032982,
+        -0.24539176344068325,
+        0.831536680764108,
+        0.5442269849479987,
+        -0.32705834085637786,
+        1.0
+      ]
+    ],
+    "condition_number": 193.03937441545182,
+    "vif_diagonal": {
+      "rank_ep": 20.501587476708696,
+      "rank_bp": 16.78836512905028,
+      "rank_roe": 12.991149360608294,
+      "rank_ep_industry_size_residual": 12.670476491532352,
+      "rank_bp_industry_size_residual": 11.263637937006205,
+      "rank_roe_industry_size_residual": 8.70563618651088
+    }
+  },
+  "residual_orthogonality": {
+    "ep_industry_size_residual": {
+      "max_abs_date_industry_mean": 1.5321077739827161e-15,
+      "max_abs_daily_size_inner_product": 1.2960299500264227e-11
+    },
+    "bp_industry_size_residual": {
+      "max_abs_date_industry_mean": 1.046076805424592e-15,
+      "max_abs_daily_size_inner_product": 1.3914203123022162e-11
+    },
+    "roe_industry_size_residual": {
+      "max_abs_date_industry_mean": 1.1410625530869663e-16,
+      "max_abs_daily_size_inner_product": 1.4708234630234074e-12
+    }
+  },
+  "model_stability": {
+    "joined_rows": 1751687,
+    "days": 727,
+    "models": {
+      "elastic": {
+        "mean_daily_spearman": 0.9970835697687405,
+        "min_daily_spearman": 0.9858979412668963,
+        "mean_daily_top25_overlap": 0.8761485557083907,
+        "min_daily_top25_overlap": 0.48,
+        "quarterly": {
+          "2021Q1": {
+            "mean_daily_spearman": 0.9965553081081392,
+            "mean_daily_top25_overlap": 0.9
+          },
+          "2021Q2": {
+            "mean_daily_spearman": 0.9980912923426961,
+            "mean_daily_top25_overlap": 0.91
+          },
+          "2021Q3": {
+            "mean_daily_spearman": 0.9983158040540087,
+            "mean_daily_top25_overlap": 0.925
+          },
+          "2021Q4": {
+            "mean_daily_spearman": 0.9988801832419778,
+            "mean_daily_top25_overlap": 0.8924590163934426
+          },
+          "2022Q1": {
+            "mean_daily_spearman": 0.9988255843360736,
+            "mean_daily_top25_overlap": 0.893103448275862
+          },
+          "2022Q2": {
+            "mean_daily_spearman": 0.99975439356356,
+            "mean_daily_top25_overlap": 0.9633898305084745
+          },
+          "2022Q3": {
+            "mean_daily_spearman": 0.9995582350921106,
+            "mean_daily_top25_overlap": 0.9236923076923077
+          },
+          "2022Q4": {
+            "mean_daily_spearman": 0.9997899076651102,
+            "mean_daily_top25_overlap": 0.9540000000000001
+          },
+          "2023Q1": {
+            "mean_daily_spearman": 0.9989566930099798,
+            "mean_daily_top25_overlap": 0.9016949152542373
+          },
+          "2023Q2": {
+            "mean_daily_spearman": 0.9957945649933629,
+            "mean_daily_top25_overlap": 0.8094915254237288
+          },
+          "2023Q3": {
+            "mean_daily_spearman": 0.9902062345872138,
+            "mean_daily_top25_overlap": 0.7325
+          },
+          "2023Q4": {
+            "mean_daily_spearman": 0.9905095180901387,
+            "mean_daily_top25_overlap": 0.7126666666666667
+          }
+        }
+      },
+      "gbrt": {
+        "mean_daily_spearman": 0.9909464992004617,
+        "min_daily_spearman": 0.9804882194173192,
+        "mean_daily_top25_overlap": 0.7136726272352133,
+        "min_daily_top25_overlap": 0.44,
+        "quarterly": {
+          "2021Q1": {
+            "mean_daily_spearman": 0.9892803990759718,
+            "mean_daily_top25_overlap": 0.7586206896551724
+          },
+          "2021Q2": {
+            "mean_daily_spearman": 0.9923231118415106,
+            "mean_daily_top25_overlap": 0.8019999999999999
+          },
+          "2021Q3": {
+            "mean_daily_spearman": 0.9891898484630216,
+            "mean_daily_top25_overlap": 0.676875
+          },
+          "2021Q4": {
+            "mean_daily_spearman": 0.9935681727180651,
+            "mean_daily_top25_overlap": 0.6675409836065573
+          },
+          "2022Q1": {
+            "mean_daily_spearman": 0.9913256549436454,
+            "mean_daily_top25_overlap": 0.6820689655172414
+          },
+          "2022Q2": {
+            "mean_daily_spearman": 0.9944582119357218,
+            "mean_daily_top25_overlap": 0.7315254237288136
+          },
+          "2022Q3": {
+            "mean_daily_spearman": 0.9946107717952823,
+            "mean_daily_top25_overlap": 0.7446153846153846
+          },
+          "2022Q4": {
+            "mean_daily_spearman": 0.9951155637177017,
+            "mean_daily_top25_overlap": 0.7066666666666667
+          },
+          "2023Q1": {
+            "mean_daily_spearman": 0.9942801589157982,
+            "mean_daily_top25_overlap": 0.7328813559322034
+          },
+          "2023Q2": {
+            "mean_daily_spearman": 0.9883786665374495,
+            "mean_daily_top25_overlap": 0.6420338983050848
+          },
+          "2023Q3": {
+            "mean_daily_spearman": 0.9841022508729947,
+            "mean_daily_top25_overlap": 0.730625
+          },
+          "2023Q4": {
+            "mean_daily_spearman": 0.9849779164349278,
+            "mean_daily_top25_overlap": 0.6880000000000001
+          }
+        }
+      }
+    }
+  },
+  "gate_evaluation": {
+    "gates": {
+      "full_period_return_and_sharpe_better": false,
+      "complete_three_year_coverage": true,
+      "at_least_two_yearly_double_wins": false,
+      "flat_20bp_return_and_sharpe_better": false,
+      "drawdown_not_more_than_2pp_worse": true,
+      "turnover_not_more_than_25pct_higher": true,
+      "rank_ic_within_tolerance": true,
+      "complete_five_cohort_coverage": true,
+      "all_five_candidate_cohorts_positive": true,
+      "paired_daily_difference_positive": false
+    },
+    "yearly_double_wins": 0,
+    "paired_daily_return_difference": {
+      "days": 727,
+      "mean_daily_difference": -0.00016188298731587233,
+      "annualized_mean_difference": -0.0391756829304411,
+      "hac_lags": 4,
+      "hac_standard_error": 0.00013738227863513782,
+      "hac_t_stat": -1.178339658681917
+    },
+    "all_gates_passed": false,
+    "experiment_decision": "rejected_on_development"
+  }
+}

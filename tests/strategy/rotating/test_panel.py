@@ -6,8 +6,10 @@ import pytest
 
 from strategy.rotating.features.build_panel import (
     CANDIDATE_MODEL_INPUT_FEATURES,
+    INDUSTRY_SIZE_MODEL_INPUT_FEATURES,
     MODEL_INPUT_FEATURES,
     MODEL_TARGET_COLUMN,
+    add_industry_size_residual_features,
     build_factor_panel,
 )
 
@@ -15,6 +17,142 @@ from strategy.rotating.features.build_panel import (
 def test_engineered_feature_pack_is_the_selected_model_input_schema() -> None:
     assert MODEL_INPUT_FEATURES == CANDIDATE_MODEL_INPUT_FEATURES
     assert MODEL_TARGET_COLUMN == "target_rank"
+    assert INDUSTRY_SIZE_MODEL_INPUT_FEATURES[: len(MODEL_INPUT_FEATURES)] == (
+        MODEL_INPUT_FEATURES
+    )
+    assert INDUSTRY_SIZE_MODEL_INPUT_FEATURES[-3:] == (
+        "rank_ep_industry_size_residual",
+        "rank_bp_industry_size_residual",
+        "rank_roe_industry_size_residual",
+    )
+
+
+def test_industry_size_residual_features_remove_industry_and_size_components() -> None:
+    size = np.tile(np.linspace(-1.5, 1.5, 6), 2)
+    pattern = np.tile(np.array([1.0, -0.8, 0.2, -0.4, 0.7, -0.7]), 2)
+    industries = np.repeat(["银行", "制造"], 6)
+    industry_effect = np.repeat([0.4, -0.3], 6)
+    frame = pd.DataFrame(
+        {
+            "code": [f"000{index:03d}" for index in range(12)],
+            "date": pd.Timestamp("2023-12-29"),
+            "industry": industries,
+            "eligible": True,
+            "log_float_market_cap": size + 24.0,
+            "ep": np.exp(industry_effect + 0.25 * size + pattern),
+            "bp": np.exp(-industry_effect - 0.15 * size + pattern[::-1]),
+            "roe": 0.12 + industry_effect / 10.0 + 0.01 * size + pattern / 100.0,
+        }
+    )
+
+    result = add_industry_size_residual_features(frame)
+
+    for feature in (
+        "ep_industry_size_residual",
+        "bp_industry_size_residual",
+        "roe_industry_size_residual",
+    ):
+        assert result[feature].notna().all()
+        assert np.allclose(result.groupby("industry")[feature].mean(), 0.0)
+        assert np.isclose(
+            np.dot(result[feature], result["log_float_market_cap"]),
+            0.0,
+            atol=1e-10,
+        )
+        assert result[f"rank_{feature}"].between(-1.0, 1.0).all()
+
+
+def test_industry_size_residual_features_reject_small_or_unknown_industries() -> None:
+    frame = pd.DataFrame(
+        {
+            "code": [f"000{index:03d}" for index in range(9)],
+            "date": pd.Timestamp("2023-12-29"),
+            "industry": ["银行"] * 4 + ["制造"] * 4 + ["UNKNOWN"],
+            "eligible": True,
+            "log_float_market_cap": np.linspace(22.0, 26.0, 9),
+            "ep": np.linspace(0.05, 0.13, 9),
+            "bp": np.linspace(0.2, 1.0, 9),
+            "roe": np.linspace(0.05, 0.15, 9),
+        }
+    )
+
+    result = add_industry_size_residual_features(frame)
+
+    for feature in (
+        "ep_industry_size_residual",
+        "bp_industry_size_residual",
+        "roe_industry_size_residual",
+    ):
+        assert result[feature].isna().all()
+        assert result[f"rank_{feature}"].isna().all()
+
+
+def test_industry_size_winsorization_precedes_unknown_industry_filter() -> None:
+    raw_ep = pd.Series([0.0, 1.0, 2.0, 3.0, 4.0, 100.0])
+    frame = pd.DataFrame(
+        {
+            "code": [f"00000{index}" for index in range(6)],
+            "date": pd.Timestamp("2023-12-29"),
+            "industry": ["known"] * 5 + ["UNKNOWN"],
+            "eligible": True,
+            "log_float_market_cap": 24.0,
+            "ep": np.exp(raw_ep),
+            "bp": np.exp(raw_ep),
+            "roe": raw_ep,
+        }
+    )
+
+    result = add_industry_size_residual_features(frame)
+
+    winsorized = raw_ep.clip(
+        lower=raw_ep.quantile(0.01),
+        upper=raw_ep.quantile(0.99),
+    )
+    expected_high_residual = winsorized.iloc[4] - winsorized.iloc[:5].mean()
+    assert result.loc[4, "ep_industry_size_residual"] == pytest.approx(
+        expected_high_residual
+    )
+    assert pd.isna(result.loc[5, "ep_industry_size_residual"])
+
+
+def test_industry_size_features_normalize_blank_industries_to_unknown() -> None:
+    frame = pd.DataFrame(
+        {
+            "code": [f"00000{index}" for index in range(6)],
+            "date": pd.Timestamp("2023-12-29"),
+            "industry": ["", " ", "\t", None, "  ", "known"],
+            "eligible": True,
+            "log_float_market_cap": np.linspace(23.0, 24.0, 6),
+            "ep": np.linspace(0.05, 0.10, 6),
+            "bp": np.linspace(0.4, 0.9, 6),
+            "roe": np.linspace(0.08, 0.13, 6),
+        }
+    )
+
+    result = add_industry_size_residual_features(frame)
+
+    pd.testing.assert_series_equal(result["industry"], frame["industry"])
+    assert result["ep_industry_size_residual"].isna().all()
+
+
+def test_industry_size_ranks_accept_nullable_eligible_masks() -> None:
+    frame = pd.DataFrame(
+        {
+            "code": [f"00000{index}" for index in range(6)],
+            "date": pd.Timestamp("2023-12-29"),
+            "industry": "known",
+            "eligible": pd.Series([True] * 5 + [pd.NA], dtype="boolean"),
+            "log_float_market_cap": np.linspace(23.0, 24.0, 6),
+            "ep": np.linspace(0.05, 0.10, 6),
+            "bp": np.linspace(0.4, 0.9, 6),
+            "roe": np.linspace(0.08, 0.13, 6),
+        }
+    )
+
+    result = add_industry_size_residual_features(frame)
+
+    assert result.loc[:4, "rank_ep_industry_size_residual"].notna().all()
+    assert pd.isna(result.loc[5, "rank_ep_industry_size_residual"])
 
 
 def test_build_factor_panel_keeps_low_liquidity_observations_in_rolling_window() -> None:
@@ -481,6 +619,28 @@ def test_build_factor_panel_exposes_the_registered_model_feature_schema() -> Non
         "board_chinext",
     }
     assert expected.issubset(panel.columns)
+    assert not set(
+        (
+            "ep_industry_size_residual",
+            "bp_industry_size_residual",
+            "roe_industry_size_residual",
+        )
+    ).intersection(panel.columns)
+
+    candidate_panel = build_factor_panel(
+        start=str(dates[250].date()),
+        end=str(dates[-1].date()),
+        source=bars,
+        min_history=250,
+        min_median_amount=0.0,
+        min_float_market_cap=0.0,
+        include_industry_size_features=True,
+    )
+    assert {
+        "ep_industry_size_residual",
+        "bp_industry_size_residual",
+        "roe_industry_size_residual",
+    }.issubset(candidate_panel.columns)
 
 
 def test_build_factor_panel_maps_daily_cross_section_ranks_to_minus_one_and_one() -> None:

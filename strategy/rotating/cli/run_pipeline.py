@@ -10,10 +10,12 @@ from strategy.rotating.features.build_panel import (
     BASELINE_MODEL_INPUT_FEATURES,
     CANDIDATE_MODEL_INPUT_FEATURES,
     ENDPOINT_TARGET_COLUMN,
+    INDUSTRY_SIZE_MODEL_INPUT_FEATURES,
     MODEL_TARGET_COLUMN,
     PATH_TARGET_COLUMN,
 )
 from strategy.rotating.pipeline import (
+    augment_panel_dataset_with_industry_size_features,
     build_panel_dataset,
     run_backtest_dataset,
     score_panel_dataset,
@@ -22,12 +24,19 @@ from strategy.rotating.pipeline import (
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("build-panel", "score", "backtest", "all"))
+    parser.add_argument(
+        "command",
+        choices=("build-panel", "augment-frozen-panel", "score", "backtest", "all"),
+    )
     parser.add_argument("--start", required=True)
     parser.add_argument("--end", required=True)
     parser.add_argument("--capital", type=float, default=1_000_000.0)
     parser.add_argument("--data-cutoff")
     parser.add_argument("--panel-root")
+    parser.add_argument(
+        "--frozen-panel-root",
+        help="Input panel root for augment-frozen-panel; --panel-root is its output",
+    )
     parser.add_argument("--score-root")
     parser.add_argument(
         "--target-column",
@@ -36,7 +45,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--feature-set",
-        choices=("baseline", "enhanced"),
+        choices=("baseline", "enhanced", "industry_size"),
         default="enhanced",
     )
     parser.add_argument(
@@ -48,17 +57,44 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Also report the preregistered CSI 300 10-month entry-gate candidate",
     )
+    parser.add_argument(
+        "--experiment-decision",
+        choices=(
+            "rejected_on_development",
+            "development_winner_pending_fresh_forward_validation",
+        ),
+        help="Machine-readable development decision for an experiment report",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    feature_columns = (
-        BASELINE_MODEL_INPUT_FEATURES
-        if args.feature_set == "baseline"
-        else CANDIDATE_MODEL_INPUT_FEATURES
-    )
-    panel_options = {"output_root": args.panel_root} if args.panel_root else {}
+    feature_columns = {
+        "baseline": BASELINE_MODEL_INPUT_FEATURES,
+        "enhanced": CANDIDATE_MODEL_INPUT_FEATURES,
+        "industry_size": INDUSTRY_SIZE_MODEL_INPUT_FEATURES,
+    }[args.feature_set]
+    panel_options = {
+        **({"output_root": args.panel_root} if args.panel_root else {}),
+        "include_industry_size_features": args.feature_set == "industry_size",
+    }
+    if args.command == "augment-frozen-panel":
+        if args.feature_set != "industry_size":
+            raise ValueError(
+                "augment-frozen-panel requires --feature-set industry_size"
+            )
+        if not args.frozen_panel_root or not args.panel_root:
+            raise ValueError(
+                "augment-frozen-panel requires --frozen-panel-root and --panel-root"
+            )
+        augment_panel_dataset_with_industry_size_features(
+            args.start,
+            args.end,
+            input_root=args.frozen_panel_root,
+            output_root=args.panel_root,
+        )
+        return
     if args.command == "build-panel":
         build_panel_dataset(
             args.start,
@@ -89,6 +125,8 @@ def main() -> None:
             args.end,
             initial_capital=args.capital,
             include_market_gate_candidate=args.market_gate_candidate,
+            expected_feature_columns=feature_columns,
+            experiment_decision=args.experiment_decision,
             **({"score_root": args.score_root} if args.score_root else {}),
             **({"report_root": args.report_root} if args.report_root else {}),
         )

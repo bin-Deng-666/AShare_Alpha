@@ -8,6 +8,6 @@
 - `experiments/v2_selected_holdout/`：开发期选择冻结后的一次性增强版封存结果；
 - 根目录：两段合并的诊断，不用于选模。
 
-JSON 同时记录 `score_diagnostics`（相对实际五日端点收益）和 `model_target_diagnostics`（相对本次训练标签），避免路径标签模型只按一种 IC 被误读；两者都包含 HAC(4)、逐年与五 cohort 统计。`score_specification` 保存完整特征列表、目标列、训练窗、最小样本和随机种子；场景诊断另存换手与期末未成交积压。
+JSON 同时记录 `score_diagnostics`（相对实际五日端点收益）和 `model_target_diagnostics`（相对本次训练标签）；两者都包含 HAC(4)、逐年与五 cohort 统计。`score_specification` 保存完整特征列表、目标列、训练窗、最小样本和随机种子，并拒绝在同一评分根目录混写不同配置；场景诊断另存换手与期末未成交积压。
 
 这些结果只用于研究，不构成未来收益承诺。

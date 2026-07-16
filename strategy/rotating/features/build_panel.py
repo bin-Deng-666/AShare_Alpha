@@ -71,9 +71,13 @@ CANDIDATE_MODEL_INPUT_FEATURES = tuple(
     f"rank_{feature}" for feature in MODEL_FEATURES
 ) + CONTROL_FEATURES
 MODEL_INPUT_FEATURES = CANDIDATE_MODEL_INPUT_FEATURES
+ENDPOINT_RETURN_COLUMN = "target_5"
+PATH_RETURN_COLUMN = "target_path_5"
+ENDPOINT_RESIDUAL_COLUMN = "target_residual"
+PATH_RESIDUAL_COLUMN = "target_path_residual"
 ENDPOINT_TARGET_COLUMN = "target_rank"
 PATH_TARGET_COLUMN = "target_path_rank"
-MODEL_TARGET_COLUMN = PATH_TARGET_COLUMN
+MODEL_TARGET_COLUMN = ENDPOINT_TARGET_COLUMN
 
 
 def build_factor_panel(
@@ -105,6 +109,20 @@ def build_factor_panel(
         .drop_duplicates(["code", "date"], keep="last")
         .reset_index(drop=True)
     )
+    raw_execution_columns = {"raw_open", "raw_high", "raw_low"}
+    has_limit_observations = any(
+        column in frame and frame[column].notna().any()
+        for column in ("limit_up", "limit_down")
+    ) or any(
+        column in frame and frame[column].fillna(False).astype(bool).any()
+        for column in ("is_limit_up", "is_limit_down")
+    )
+    missing_raw_execution = raw_execution_columns.difference(frame.columns)
+    if has_limit_observations and missing_raw_execution:
+        raise ValueError(
+            "raw OHLC columns are required when applying raw exchange limits: "
+            + ", ".join(sorted(missing_raw_execution))
+        )
     market_dates = pd.DatetimeIndex(sorted(frame["date"].unique()))
     market_session = pd.Series(range(len(market_dates)), index=market_dates)
     frame["_market_session"] = frame["date"].map(market_session).astype(int)
@@ -327,6 +345,11 @@ def build_factor_panel(
     frame["_entry_date"] = frame["date"].map(entry_date_map)
     frame["_exit_date"] = frame["date"].map(exit_date_map)
     open_lookup = frame.set_index(["code", "date"])["open"]
+    # Returns use adjusted opens, while exchange limits and execution use raw
+    # OHLC. The catalog exposes both bases so labels mirror ``run_portfolio``.
+    raw_open = pd.to_numeric(frame.get("raw_open", frame["open"]), errors="coerce")
+    raw_high = pd.to_numeric(frame.get("raw_high", frame["high"]), errors="coerce")
+    raw_low = pd.to_numeric(frame.get("raw_low", frame["low"]), errors="coerce")
     limit_up = pd.to_numeric(
         frame["limit_up"]
         if "limit_up" in frame
@@ -339,18 +362,35 @@ def build_factor_panel(
         else pd.Series(np.nan, index=frame.index),
         errors="coerce",
     )
-    open_is_limit_up = pd.Series(
-        np.isclose(frame["open"], limit_up, equal_nan=False), index=frame.index
+    one_price = pd.Series(
+        np.isclose(raw_high, raw_low, equal_nan=False)
+        & np.isclose(raw_open, raw_high, equal_nan=False),
+        index=frame.index,
     )
-    open_is_limit_down = pd.Series(
-        np.isclose(frame["open"], limit_down, equal_nan=False), index=frame.index
+    is_limit_up = frame.get(
+        "is_limit_up", pd.Series(False, index=frame.index)
+    ).fillna(False).astype(bool)
+    is_limit_down = frame.get(
+        "is_limit_down", pd.Series(False, index=frame.index)
+    ).fillna(False).astype(bool)
+    open_is_limit_up = is_limit_up | pd.Series(
+        np.isclose(raw_open, limit_up, equal_nan=False), index=frame.index
+    )
+    open_is_limit_down = is_limit_down | pd.Series(
+        np.isclose(raw_open, limit_down, equal_nan=False), index=frame.index
     )
     trade_status = frame["trade_status"].fillna(False).astype(bool)
     frame["_can_buy_open"] = (
-        trade_status & frame["open"].notna() & ~open_is_limit_up
+        trade_status
+        & frame["open"].notna()
+        & raw_open.notna()
+        & ~(one_price & open_is_limit_up)
     )
     frame["_can_sell_open"] = (
-        trade_status & frame["open"].notna() & ~open_is_limit_down
+        trade_status
+        & frame["open"].notna()
+        & raw_open.notna()
+        & ~(one_price & open_is_limit_down)
     )
     can_buy_lookup = frame.set_index(["code", "date"])["_can_buy_open"]
     can_sell_lookup = frame.set_index(["code", "date"])["_can_sell_open"]
@@ -389,11 +429,13 @@ def build_factor_panel(
         & path_execution_frame.all(axis=1)
         & entry_executable
     )
-    frame["target_5"] = (
+    frame[ENDPOINT_RETURN_COLUMN] = (
         frame["exit_open_5"] / frame["entry_open"] - 1.0
     ).where(complete_path)
     frame["path_open_mean_5"] = path_open_frame.mean(axis=1).where(complete_path)
-    frame["target_path_5"] = frame["path_open_mean_5"] / frame["entry_open"] - 1.0
+    frame[PATH_RETURN_COLUMN] = (
+        frame["path_open_mean_5"] / frame["entry_open"] - 1.0
+    )
     frame["label_available_date"] = frame["_exit_date"]
     frame = frame.drop(
         columns=[
@@ -448,9 +490,11 @@ def build_factor_panel(
             np.nan,
         )
 
-    add_neutralized_target("target_5", "target_residual", "target_rank")
     add_neutralized_target(
-        "target_path_5", "target_path_residual", "target_path_rank"
+        ENDPOINT_RETURN_COLUMN, ENDPOINT_RESIDUAL_COLUMN, ENDPOINT_TARGET_COLUMN
+    )
+    add_neutralized_target(
+        PATH_RETURN_COLUMN, PATH_RESIDUAL_COLUMN, PATH_TARGET_COLUMN
     )
 
     use = frame["date"].ge(pd.Timestamp(start))

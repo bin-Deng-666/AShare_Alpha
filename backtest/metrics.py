@@ -129,12 +129,15 @@ def compute_metrics(
     y_df["year"] = y_df["date"].dt.year
     yearly = []
     for year, g in y_df.groupby("year"):
-        s_ret = float(g["equity"].iloc[-1] / g["equity"].iloc[0] - 1)
+        s_ret = float((1.0 + g["daily_ret"]).prod() - 1.0)
+        s_vol = float(g["daily_ret"].std() * np.sqrt(trading_days))
+        s_sharpe = float(s_ret / s_vol) if s_vol > 1e-12 else float("nan")
         b_ret = float((1 + g["bench_ret"]).prod() - 1)
         yearly.append(
             {
                 "year": int(year),
                 "strategy": s_ret,
+                "strategy_sharpe": s_sharpe,
                 "benchmark": b_ret,
                 "excess": s_ret - b_ret,
             }

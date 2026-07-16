@@ -14,6 +14,8 @@ from backtest.metrics import compute_metrics
 from strategy.rotating.config.params import DEFAULT_PARAMS, Params
 from strategy.rotating.engine.portfolio import run_portfolio
 from strategy.rotating.features.build_panel import (
+    ENDPOINT_RETURN_COLUMN,
+    ENDPOINT_TARGET_COLUMN,
     MODEL_INPUT_FEATURES,
     MODEL_TARGET_COLUMN,
     build_factor_panel,
@@ -39,6 +41,51 @@ def _atomic_parquet(frame: pd.DataFrame, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(".tmp.parquet")
     frame.to_parquet(temporary, index=False)
+    temporary.replace(path)
+
+
+def _score_specification(
+    *,
+    feature_columns: tuple[str, ...],
+    target_column: str,
+    min_train_rows: int,
+    train_years: int,
+    random_state: int,
+) -> dict[str, Any]:
+    return {
+        "feature_columns": list(feature_columns),
+        "target_column": target_column,
+        "min_train_rows": int(min_train_rows),
+        "train_years": int(train_years),
+        "random_state": int(random_state),
+    }
+
+
+def _validate_score_root_specification(
+    score_root: Path, requested: dict[str, Any]
+) -> None:
+    partitions = list(score_root.glob("year=*/scores.parquet"))
+    if not partitions:
+        return
+    existing = _load_score_specification(score_root)
+    if existing is None:
+        raise ValueError(
+            f"score root {score_root} contains partitions without a score specification"
+        )
+    if existing != requested:
+        raise ValueError(
+            f"score root {score_root} contains a different score specification; "
+            "use a separate output root"
+        )
+
+
+def _write_score_specification(score_root: Path, payload: dict[str, Any]) -> None:
+    score_root.mkdir(parents=True, exist_ok=True)
+    path = score_root / SCORE_SPEC_FILENAME
+    temporary = path.with_suffix(".tmp.json")
+    temporary.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     temporary.replace(path)
 
 
@@ -93,15 +140,26 @@ def score_panel_dataset(
     last = pd.Timestamp(end).normalize()
     panel_path = Path(panel_root)
     score_path = Path(output_root)
+    score_specification = _score_specification(
+        feature_columns=feature_columns,
+        target_column=target_column,
+        min_train_rows=min_train_rows,
+        train_years=train_years,
+        random_state=random_state,
+    )
+    _validate_score_root_specification(score_path, score_specification)
+    # Persist the lock before partitions so an interrupted first run can be
+    # resumed safely without leaving untyped score files behind.
+    _write_score_specification(score_path, score_specification)
     columns = list(
         dict.fromkeys(
             [
                 "code",
                 "date",
                 "eligible",
-                "target_rank",
+                ENDPOINT_TARGET_COLUMN,
                 target_column,
-                "target_5",
+                ENDPOINT_RETURN_COLUMN,
                 "label_available_date",
                 "industry",
                 "adv_20",
@@ -149,18 +207,18 @@ def score_panel_dataset(
             "adv_20",
             "float_market_cap",
             "amount",
-            "target_5",
-            "target_rank",
+            ENDPOINT_RETURN_COLUMN,
+            ENDPOINT_TARGET_COLUMN,
             "label_available_date",
         ]
-        if target_column != "target_rank":
+        if target_column != ENDPOINT_TARGET_COLUMN:
             metadata_columns.append(target_column)
         metadata = panel.loc[
             panel["date"].between(prediction_start, prediction_end),
             metadata_columns,
         ].drop_duplicates(["code", "date"], keep="last")
-        if target_column == "target_rank":
-            metadata["model_target_rank"] = metadata["target_rank"]
+        if target_column == ENDPOINT_TARGET_COLUMN:
+            metadata["model_target_rank"] = metadata[ENDPOINT_TARGET_COLUMN]
         else:
             metadata = metadata.rename(columns={target_column: "model_target_rank"})
         scores = scores.merge(
@@ -172,21 +230,6 @@ def score_panel_dataset(
         output = score_path / f"year={year}" / "scores.parquet"
         _atomic_parquet(scores, output)
         outputs.append(output)
-    score_path.mkdir(parents=True, exist_ok=True)
-    (score_path / SCORE_SPEC_FILENAME).write_text(
-        json.dumps(
-            {
-                "feature_columns": list(feature_columns),
-                "target_column": target_column,
-                "min_train_rows": int(min_train_rows),
-                "train_years": int(train_years),
-                "random_state": int(random_state),
-            },
-            ensure_ascii=False,
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
     return outputs
 
 
@@ -314,7 +357,7 @@ def _score_diagnostics(
     scores: pd.DataFrame,
     *,
     evaluation_end: pd.Timestamp,
-    target_column: str = "target_rank",
+    target_column: str = ENDPOINT_TARGET_COLUMN,
 ) -> dict[str, Any]:
     diagnostics: dict[str, Any] = {}
     if target_column not in scores:
@@ -387,9 +430,10 @@ def _admission_diagnostics(result: dict[str, Any]) -> dict[str, Any]:
     if not equity.empty:
         equity["date"] = pd.to_datetime(equity["date"])
         for year, group in equity.groupby(equity["date"].dt.year, sort=True):
-            start_equity = float(group["equity"].iloc[0])
-            end_equity = float(group["equity"].iloc[-1])
-            by_year[str(year)] = end_equity / start_equity - 1.0
+            by_year[str(year)] = float(
+                (1.0 + pd.to_numeric(group["daily_ret"], errors="coerce")).prod()
+                - 1.0
+            )
 
     buys = trades.loc[trades.get("side", pd.Series(dtype=str)).eq("BUY")].copy()
     utilization = pd.Series(dtype=float)

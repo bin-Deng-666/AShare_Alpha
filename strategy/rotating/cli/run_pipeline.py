@@ -9,7 +9,9 @@ import pandas as pd
 from strategy.rotating.features.build_panel import (
     BASELINE_MODEL_INPUT_FEATURES,
     CANDIDATE_MODEL_INPUT_FEATURES,
+    ENDPOINT_TARGET_COLUMN,
     MODEL_TARGET_COLUMN,
+    PATH_TARGET_COLUMN,
 )
 from strategy.rotating.pipeline import (
     build_panel_dataset,
@@ -29,7 +31,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--score-root")
     parser.add_argument(
         "--target-column",
-        choices=("target_rank", "target_path_rank"),
+        choices=(ENDPOINT_TARGET_COLUMN, PATH_TARGET_COLUMN),
         default=MODEL_TARGET_COLUMN,
     )
     parser.add_argument(

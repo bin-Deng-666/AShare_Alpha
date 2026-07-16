@@ -56,10 +56,16 @@ def load_point_in_time_source(
         d.limit_down,
         d.is_limit_up,
         d.is_limit_down,
+        r.open AS raw_open,
+        r.high AS raw_high,
+        r.low AS raw_low,
         COALESCE(i.industry_name, 'UNKNOWN') AS industry,
         d.bar_source,
         d.indicator_source
       FROM stock_daily d
+      LEFT JOIN stock_daily_raw r
+        ON d.code = r.code
+       AND d.date = r.date
       LEFT JOIN industry_membership i
         ON d.code = i.code
        AND d.date >= i.valid_from

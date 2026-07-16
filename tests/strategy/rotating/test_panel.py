@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from strategy.rotating.features.build_panel import (
     CANDIDATE_MODEL_INPUT_FEATURES,
@@ -13,7 +14,7 @@ from strategy.rotating.features.build_panel import (
 
 def test_engineered_feature_pack_is_the_selected_model_input_schema() -> None:
     assert MODEL_INPUT_FEATURES == CANDIDATE_MODEL_INPUT_FEATURES
-    assert MODEL_TARGET_COLUMN == "target_path_rank"
+    assert MODEL_TARGET_COLUMN == "target_rank"
 
 
 def test_build_factor_panel_keeps_low_liquidity_observations_in_rolling_window() -> None:
@@ -161,6 +162,91 @@ def test_forward_interval_labels_require_an_executable_complete_path() -> None:
     first = panel.iloc[0]
     assert pd.isna(first["target_5"])
     assert pd.isna(first["target_path_5"])
+
+
+def test_forward_labels_use_raw_one_price_limits_like_the_execution_engine() -> None:
+    dates = pd.bdate_range("2024-01-02", periods=8)
+    rows = []
+    for code, entry_is_one_price in (("000001", False), ("000002", True)):
+        for offset, date in enumerate(dates):
+            raw_open = 11.0 if offset == 1 else 10.0
+            rows.append(
+                {
+                    "code": code,
+                    "date": date,
+                    # Adjusted prices deliberately differ from the raw limit-price
+                    # basis. They remain the return basis for both labels.
+                    "open": raw_open / 2.0,
+                    "high": raw_open / 2.0 + 0.25,
+                    "low": raw_open / 2.0 - 0.25,
+                    "close": raw_open / 2.0,
+                    "raw_open": raw_open,
+                    "raw_high": raw_open if offset == 1 and entry_is_one_price else raw_open + 0.5,
+                    "raw_low": raw_open if offset == 1 and entry_is_one_price else raw_open - 0.5,
+                    "amount": 100e6,
+                    "turnover_pct": 1.0,
+                    "float_market_cap": 10e9,
+                    "is_st": False,
+                    "trade_status": True,
+                    "limit_up": 11.0 if offset == 1 else 12.0,
+                    "limit_down": 9.0,
+                    "is_limit_up": offset == 1,
+                    "is_limit_down": False,
+                }
+            )
+
+    panel = build_factor_panel(
+        start=str(dates[0].date()),
+        end=str(dates[-1].date()),
+        source=pd.DataFrame(rows),
+        min_history=1,
+        min_listing_sessions=1,
+        min_median_amount=0.0,
+        min_float_market_cap=0.0,
+    )
+
+    ordinary_limit_open = panel.loc[
+        panel["code"].eq("000001") & panel["date"].eq(dates[0])
+    ].iloc[0]
+    one_price_limit_open = panel.loc[
+        panel["code"].eq("000002") & panel["date"].eq(dates[0])
+    ].iloc[0]
+    assert pd.notna(ordinary_limit_open["target_5"])
+    assert pd.notna(ordinary_limit_open["target_path_5"])
+    assert pd.isna(one_price_limit_open["target_5"])
+    assert pd.isna(one_price_limit_open["target_path_5"])
+
+
+def test_forward_labels_reject_raw_limits_without_raw_ohlc() -> None:
+    dates = pd.bdate_range("2024-01-02", periods=8)
+    source = pd.DataFrame(
+        {
+            "code": "000001",
+            "date": dates,
+            "open": 10.0,
+            "high": 10.5,
+            "low": 9.5,
+            "close": 10.0,
+            "amount": 100e6,
+            "turnover_pct": 1.0,
+            "float_market_cap": 10e9,
+            "is_st": False,
+            "trade_status": True,
+            "limit_up": 11.0,
+            "limit_down": 9.0,
+        }
+    )
+
+    with pytest.raises(ValueError, match="raw OHLC columns are required"):
+        build_factor_panel(
+            start=str(dates[0].date()),
+            end=str(dates[-1].date()),
+            source=source,
+            min_history=1,
+            min_listing_sessions=1,
+            min_median_amount=0.0,
+            min_float_market_cap=0.0,
+        )
 
 
 def test_engineered_features_use_the_preregistered_complete_windows() -> None:

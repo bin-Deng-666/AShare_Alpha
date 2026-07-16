@@ -3,8 +3,40 @@ from __future__ import annotations
 import json
 
 import pandas as pd
+import pytest
 
 from strategy.rotating import pipeline
+
+
+def test_score_panel_dataset_rejects_mixed_specs_in_one_score_root(tmp_path) -> None:
+    score_root = tmp_path / "scores"
+    stale_partition = score_root / "year=2021" / "scores.parquet"
+    stale_partition.parent.mkdir(parents=True)
+    pd.DataFrame({"date": pd.to_datetime(["2021-01-04"])}).to_parquet(
+        stale_partition, index=False
+    )
+    (score_root / pipeline.SCORE_SPEC_FILENAME).write_text(
+        json.dumps(
+            {
+                "feature_columns": ["rank_ret_5"],
+                "target_column": "target_rank",
+                "min_train_rows": 2_000,
+                "train_years": 3,
+                "random_state": 17,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="different score specification"):
+        pipeline.score_panel_dataset(
+            "2022-01-01",
+            "2022-12-31",
+            panel_root=tmp_path / "panel",
+            output_root=score_root,
+            feature_columns=("rank_ret_5",),
+            target_column="target_path_rank",
+        )
 
 
 def test_build_panel_dataset_never_reads_after_explicit_data_cutoff(

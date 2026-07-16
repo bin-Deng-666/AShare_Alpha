@@ -16,11 +16,16 @@
     "holdout_used_for_feature_or_label_selection": false
   },
   "selected_research_score_column": "gbrt_score",
-  "selected_target": "target_path_rank",
-  "target_definition": "Mean of T+2 through T+6 open returns relative to T+1 open, industry and log-float-market-cap neutralized and cross-sectionally ranked",
+  "selected_target": "target_rank",
+  "target_definition": "T+6 open divided by T+1 open minus one, industry and log-float-market-cap neutralized and cross-sectionally ranked",
   "label_available_date": "T+6",
   "complete_path_required": true,
-  "development_eligible_label_coverage": 0.987643,
+  "execution_label_price_bases": {
+    "return": "qfq open",
+    "tradability": "raw OHLC and raw exchange limits",
+    "limit_rule": "same one-price limit rule as run_portfolio"
+  },
+  "development_eligible_label_coverage": 0.988285,
   "engineered_features": [
     "overnight_gap_mean_5",
     "close_location_mean_10",
@@ -32,10 +37,10 @@
     "turnover_shock_5_20"
   ],
   "rejected_target": {
-    "name": "target_rank",
-    "reason": "The path target beat the endpoint target in annual return and Sharpe in all three development years, improved full-period drawdown by 2.27 percentage points, and led by 4.98 percentage points under the preregistered 20bp fixed-path stress."
+    "name": "target_path_rank",
+    "reason": "The path target beat endpoint return and Sharpe only in 2021, lost in 2022 and 2023, and worsened full-period drawdown by 2.68 percentage points. Its 0.63-point lead under the 20bp fixed-path stress was insufficient to pass the preregistered stability gates."
   },
-  "selection_basis": "The eight engineered features were fixed for both candidates. The path target passed every preregistered development-period gate before the physically separate holdout was scored.",
+  "selection_basis": "The eight engineered features were fixed for both candidates. The endpoint target passed the preregistered development-period choice after raw-price one-price-limit execution semantics were aligned with the portfolio engine, before the physically separate holdout was scored.",
   "score_specification": {
     "feature_count": 35,
     "min_train_rows": 2000,
@@ -43,30 +48,29 @@
     "random_state": 17
   },
   "development": {
-    "ann_return": -0.001278,
-    "sharpe": -0.008,
-    "max_drawdown": -0.256793,
-    "flat_20bp_ann_return": -0.002919,
-    "endpoint_rank_ic_mean": 0.086857,
-    "model_target_rank_ic_mean": 0.077655,
-    "endpoint_positive_rank_ic_day_fraction": 0.850208,
-    "endpoint_rank_ic_hac4_t": 14.387
+    "ann_return": -0.009813,
+    "sharpe": -0.064,
+    "max_drawdown": -0.251595,
+    "flat_20bp_ann_return": -0.027970,
+    "endpoint_rank_ic_mean": 0.087186,
+    "model_target_rank_ic_mean": 0.087186,
+    "endpoint_positive_rank_ic_day_fraction": 0.846047,
+    "endpoint_rank_ic_hac4_t": 14.148
   },
   "holdout": {
-    "ann_return": 0.117398,
-    "sharpe": 0.910,
-    "max_drawdown": -0.074512,
-    "flat_20bp_ann_return": 0.117056,
+    "ann_return": 0.132384,
+    "sharpe": 0.991,
+    "max_drawdown": -0.091832,
+    "flat_20bp_ann_return": 0.132047,
     "benchmark_ann_return": 0.153756,
-    "endpoint_rank_ic_mean": 0.091205,
-    "model_target_rank_ic_mean": 0.080450,
-    "endpoint_positive_rank_ic_day_fraction": 0.810193,
-    "endpoint_rank_ic_hac4_t": 10.715
+    "endpoint_rank_ic_mean": 0.091250,
+    "model_target_rank_ic_mean": 0.091250,
+    "endpoint_positive_rank_ic_day_fraction": 0.811951,
+    "endpoint_rank_ic_hac4_t": 10.617
   },
   "admission_status": "research_only_forward_validation_required",
   "unmet_gates": [
-    "Development-period absolute return is slightly negative.",
-    "At 20bp fixed-path cost, holdout GBRT annual return does not exceed Elastic Net.",
+    "Development-period absolute return is negative.",
     "Holdout annual return does not exceed the CSI 300 benchmark.",
     "Deflated Sharpe Ratio and complete multiple-testing inventory are not evaluated.",
     "Announcement-quality financial PIT data and forward paper trading are not complete."

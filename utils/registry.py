@@ -27,6 +27,7 @@ def list_registered() -> list[str]:
 
 def _load_builtin() -> None:
     from utils.adapters import crowding_price_volume as _cpv  # noqa: F401
+    from utils.adapters import rotating as _rot  # noqa: F401
 
 
 _load_builtin()

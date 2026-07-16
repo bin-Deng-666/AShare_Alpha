@@ -19,7 +19,12 @@ def monthly_gate_state_by_month(entry_gate: pd.DataFrame) -> pd.Series:
     )
     if gate["effective_month"].duplicated().any():
         raise ValueError("entry gate contains duplicate effective months")
-    return gate.set_index("effective_month")["allow_new_buys"].astype(bool)
+    state = gate["allow_new_buys"]
+    invalid = state.notna() & ~state.isin((False, True, 0, 1))
+    if invalid.any():
+        raise ValueError("entry gate allow_new_buys must contain only 0/1 states")
+    gate["allow_new_buys"] = state.eq(True)
+    return gate.set_index("effective_month")["allow_new_buys"]
 
 
 def build_monthly_trend_gate(index_bars: pd.DataFrame) -> pd.DataFrame:

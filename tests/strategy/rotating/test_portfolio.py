@@ -107,6 +107,53 @@ def test_market_gate_keeps_existing_sell_orders_active_in_risk_off_month() -> No
     assert result["pending_orders"].empty
 
 
+def test_market_gate_treats_a_missing_monthly_state_as_risk_off() -> None:
+    dates = pd.to_datetime(["2024-01-30", "2024-01-31"])
+    scores = pd.DataFrame(
+        {
+            "code": ["000001"],
+            "date": [dates[0]],
+            "ensemble_score": [1.0],
+            "eligible": [True],
+            "industry": ["银行"],
+            "adv_20": [100e6],
+        }
+    )
+    bars = pd.DataFrame(
+        {
+            "code": "000001",
+            "date": dates,
+            "open": 10.0,
+            "close": 10.0,
+            "high": 10.2,
+            "low": 9.8,
+            "trade_status": True,
+        }
+    )
+    gate = pd.DataFrame(
+        {
+            "effective_month": [pd.Timestamp("2024-01-01")],
+            "allow_new_buys": [float("nan")],
+        }
+    )
+
+    result = run_portfolio(
+        scores,
+        bars,
+        params=replace(
+            DEFAULT_PARAMS,
+            names_per_sleeve=1,
+            enable_realistic_costs=False,
+            enable_open_slippage=False,
+        ),
+        initial_capital=100_000.0,
+        entry_gate=gate,
+    )
+
+    assert result["trades"].empty
+    assert result["equity"]["allow_new_buys"].tolist() == [False, False]
+
+
 def test_run_portfolio_fills_signal_at_next_open_and_floors_to_board_lot() -> None:
     dates = pd.bdate_range("2024-01-02", periods=2)
     scores = pd.DataFrame(

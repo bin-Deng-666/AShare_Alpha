@@ -1,0 +1,2 @@
+version,total_return,ann_return,max_drawdown,sharpe,vs_hs300_excess,fees,buys,cost_model,note
+v0.1,1.4145,0.1449,-0.1488,1.05,1.2611,74402.0,210,realistic_costs,slim backbone; T+1; open_A only

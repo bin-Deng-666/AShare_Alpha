@@ -8,6 +8,7 @@ import pandas as pd
 
 from strategy.rotating.features.build_panel import (
     BASELINE_MODEL_INPUT_FEATURES,
+    CAPITAL_GAIN_OVERHANG_MODEL_INPUT_FEATURES,
     CANDIDATE_MODEL_INPUT_FEATURES,
     ENDPOINT_TARGET_COLUMN,
     INDUSTRY_SIZE_MODEL_INPUT_FEATURES,
@@ -16,6 +17,7 @@ from strategy.rotating.features.build_panel import (
     PRICE_LIMIT_MODEL_INPUT_FEATURES,
 )
 from strategy.rotating.pipeline import (
+    augment_panel_dataset_with_capital_gain_overhang_features,
     augment_panel_dataset_with_industry_size_features,
     augment_panel_dataset_with_price_limit_features,
     build_panel_dataset,
@@ -32,6 +34,7 @@ def parse_args() -> argparse.Namespace:
             "build-panel",
             "augment-frozen-panel",
             "augment-price-limit-panel",
+            "augment-overhang-panel",
             "score",
             "backtest",
             "all",
@@ -57,7 +60,13 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--feature-set",
-        choices=("baseline", "enhanced", "industry_size", "price_limit"),
+        choices=(
+            "baseline",
+            "enhanced",
+            "industry_size",
+            "price_limit",
+            "overhang",
+        ),
         default="enhanced",
     )
     parser.add_argument(
@@ -87,6 +96,7 @@ def main() -> None:
         "enhanced": CANDIDATE_MODEL_INPUT_FEATURES,
         "industry_size": INDUSTRY_SIZE_MODEL_INPUT_FEATURES,
         "price_limit": PRICE_LIMIT_MODEL_INPUT_FEATURES,
+        "overhang": CAPITAL_GAIN_OVERHANG_MODEL_INPUT_FEATURES,
     }[args.feature_set]
     panel_options = {
         **({"output_root": args.panel_root} if args.panel_root else {}),
@@ -119,6 +129,22 @@ def main() -> None:
                 "augment-price-limit-panel requires --frozen-panel-root and --panel-root"
             )
         augment_panel_dataset_with_price_limit_features(
+            args.start,
+            args.end,
+            input_root=args.frozen_panel_root,
+            output_root=args.panel_root,
+        )
+        return
+    if args.command == "augment-overhang-panel":
+        if args.feature_set != "overhang":
+            raise ValueError(
+                "augment-overhang-panel requires --feature-set overhang"
+            )
+        if not args.frozen_panel_root or not args.panel_root:
+            raise ValueError(
+                "augment-overhang-panel requires --frozen-panel-root and --panel-root"
+            )
+        augment_panel_dataset_with_capital_gain_overhang_features(
             args.start,
             args.end,
             input_root=args.frozen_panel_root,

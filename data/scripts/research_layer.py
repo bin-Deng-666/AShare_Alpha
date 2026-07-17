@@ -823,7 +823,7 @@ def _catalog_daily_view_sql(adjustment: str) -> str:
         CAST(b.volume AS DOUBLE) AS volume,
         CAST(b.amount AS DOUBLE) AS amount,
         CAST(i.turn AS DOUBLE) AS turnover_pct,
-        CAST(COALESCE(i.tradestatus, 0) AS BOOLEAN) AS trade_status,
+        CAST(i.tradestatus AS BOOLEAN) AS trade_status,
         CAST(i.pctChg AS DOUBLE) AS pct_change,
         CAST(i.peTTM AS DOUBLE) AS pe_ttm,
         CAST(i.pbMRQ AS DOUBLE) AS pb_mrq,

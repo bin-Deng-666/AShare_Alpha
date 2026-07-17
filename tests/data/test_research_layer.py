@@ -106,3 +106,24 @@ def test_catalog_unique_check_rejects_duplicate_logical_keys() -> None:
 
     with pytest.raises(RuntimeError, match="duplicated.*code, date"):
         research_layer._assert_unique(con, "duplicated", ("code", "date"))
+
+
+def test_catalog_daily_view_preserves_unknown_trade_status(
+    tmp_path, monkeypatch
+) -> None:
+    bars_dir = tmp_path / "daily_bars" / "adjustment=qfq"
+    indicators_dir = tmp_path / "daily_indicators"
+    bars_dir.mkdir(parents=True)
+    indicators_dir.mkdir(parents=True)
+    pd.DataFrame({"placeholder": [1]}).to_parquet(
+        bars_dir / "part.parquet", index=False
+    )
+    pd.DataFrame({"placeholder": [1]}).to_parquet(
+        indicators_dir / "part.parquet", index=False
+    )
+    monkeypatch.setattr(research_layer, "PARQUET", tmp_path)
+
+    sql = research_layer._catalog_daily_view_sql("qfq")
+
+    assert "CAST(i.tradestatus AS BOOLEAN) AS trade_status" in sql
+    assert "COALESCE(i.tradestatus" not in sql

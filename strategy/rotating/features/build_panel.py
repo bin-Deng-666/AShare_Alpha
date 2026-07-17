@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import deque
 from pathlib import Path
 
 import numpy as np
@@ -95,6 +96,18 @@ PRICE_LIMIT_MODEL_INPUT_FEATURES = (
     MODEL_INPUT_FEATURES
     + PRICE_LIMIT_MODEL_FEATURES
     + ("limit_history_missing_5",)
+)
+CAPITAL_GAIN_OVERHANG_MODEL_FEATURES = (
+    "capital_gain_overhang_3y",
+    "overhang_contrarian_5",
+)
+CAPITAL_GAIN_OVERHANG_MISSING_FEATURES = tuple(
+    f"{feature}_missing" for feature in CAPITAL_GAIN_OVERHANG_MODEL_FEATURES
+)
+CAPITAL_GAIN_OVERHANG_MODEL_INPUT_FEATURES = (
+    PRICE_LIMIT_MODEL_INPUT_FEATURES
+    + tuple(f"rank_{feature}" for feature in CAPITAL_GAIN_OVERHANG_MODEL_FEATURES)
+    + CAPITAL_GAIN_OVERHANG_MISSING_FEATURES
 )
 ENDPOINT_RETURN_COLUMN = "target_5"
 PATH_RETURN_COLUMN = "target_path_5"
@@ -356,6 +369,299 @@ def add_price_limit_state_features(
     restored = working.sort_values("_position")
     for feature in (*PRICE_LIMIT_MODEL_FEATURES, "limit_history_missing_5"):
         frame[feature] = restored[feature].to_numpy()
+    return frame
+
+
+def add_capital_gain_overhang_features(
+    source: pd.DataFrame,
+    *,
+    benchmark: pd.DataFrame,
+    market_dates: pd.DatetimeIndex | None = None,
+    copy: bool = True,
+) -> pd.DataFrame:
+    """Add the preregistered three-year cost-basis and contrarian bundle."""
+    required = {
+        "code",
+        "date",
+        "close",
+        "volume",
+        "amount",
+        "turnover_pct",
+        "trade_status",
+        "corporate_action_formula_status",
+        "eligible",
+    }
+    missing = required.difference(source.columns)
+    if missing:
+        raise ValueError(
+            "capital-gain overhang source missing columns: "
+            + ", ".join(sorted(missing))
+        )
+    benchmark_missing = {"date", "close"}.difference(benchmark.columns)
+    if benchmark_missing:
+        raise ValueError(
+            "capital-gain overhang benchmark missing columns: "
+            + ", ".join(sorted(benchmark_missing))
+        )
+
+    frame = source.copy() if copy else source
+    frame["code"] = frame["code"].astype(str).str.zfill(6)
+    frame["date"] = pd.to_datetime(frame["date"]).dt.normalize()
+    if frame.duplicated(["code", "date"], keep=False).any():
+        raise ValueError(
+            "capital-gain overhang source contains duplicate code/date rows"
+        )
+    frame["_overhang_position"] = np.arange(len(frame), dtype=int)
+
+    benchmark_frame = benchmark[["date", "close"]].copy()
+    benchmark_frame["date"] = pd.to_datetime(
+        benchmark_frame["date"]
+    ).dt.normalize()
+    if benchmark_frame["date"].duplicated(keep=False).any():
+        raise ValueError("capital-gain overhang benchmark contains duplicate dates")
+    benchmark_frame["close"] = pd.to_numeric(
+        benchmark_frame["close"], errors="coerce"
+    )
+    if market_dates is None:
+        calendar = pd.DatetimeIndex(benchmark_frame["date"].dropna().unique())
+    else:
+        calendar = pd.DatetimeIndex(pd.to_datetime(market_dates)).normalize().unique()
+    calendar = calendar.sort_values()
+    if calendar.empty:
+        raise ValueError("capital-gain overhang market calendar is empty")
+    if not pd.DatetimeIndex(frame["date"].dropna().unique()).isin(calendar).all():
+        raise ValueError(
+            "capital-gain overhang source dates fall outside market calendar"
+        )
+
+    benchmark_close = benchmark_frame.set_index("date")["close"].reindex(calendar)
+    benchmark_valid = benchmark_close.gt(0.0) & np.isfinite(benchmark_close)
+    benchmark_return_5 = (benchmark_close / benchmark_close.shift(5) - 1.0).where(
+        benchmark_valid & benchmark_valid.shift(5, fill_value=False)
+    )
+    benchmark_return_by_date = benchmark_return_5.to_dict()
+
+    overhang = np.full(len(frame), np.nan, dtype=float)
+    contrarian = np.full(len(frame), np.nan, dtype=float)
+    overhang_reason = np.full(len(frame), "uncomputed", dtype=object)
+    contrarian_reason = np.full(len(frame), "uncomputed", dtype=object)
+    turnover_above_one_count = np.zeros(len(frame), dtype=np.int32)
+    status_capabilities: dict[str, bool] = {}
+
+    for _, group in frame.groupby("code", sort=False):
+        indexed = group.set_index("date").reindex(calendar)
+        present = indexed["_overhang_position"].notna().to_numpy()
+        trade_raw = indexed["trade_status"]
+        trade_known = trade_raw.notna().to_numpy()
+        traded = trade_raw.astype("boolean").fillna(False).to_numpy(dtype=bool)
+        raw_close = pd.to_numeric(indexed["close"], errors="coerce")
+        close_valid = raw_close.gt(0.0) & np.isfinite(raw_close)
+        amount_raw = pd.to_numeric(indexed["amount"], errors="coerce")
+        volume_raw = pd.to_numeric(indexed["volume"], errors="coerce")
+        positive_activity = amount_raw.gt(0.0) | volume_raw.gt(0.0)
+        zero_activity = amount_raw.eq(0.0) & volume_raw.eq(0.0)
+        verified_suspension = (
+            present
+            & trade_known
+            & ~traded
+            & zero_activity.to_numpy(dtype=bool)
+        )
+        contradictory_nontrading = (
+            present
+            & trade_known
+            & ~traded
+            & positive_activity.to_numpy(dtype=bool)
+        )
+        unverified_nontrading = (
+            present & trade_known & ~traded & ~verified_suspension
+        )
+        effective_close = raw_close.where(traded & close_valid.to_numpy()).ffill()
+        effective_close_valid = effective_close.gt(0.0) & np.isfinite(
+            effective_close
+        )
+        turnover_raw = pd.to_numeric(indexed["turnover_pct"], errors="coerce")
+        turnover_valid = turnover_raw.ge(0.0) & np.isfinite(turnover_raw)
+        turnover_probability = (turnover_raw / 100.0).clip(0.0, 1.0)
+        turnover_probability = turnover_probability.where(traded, 0.0).fillna(0.0)
+
+        formula_status = indexed["corporate_action_formula_status"].astype("string")
+        for status in formula_status.dropna().unique():
+            key = str(status)
+            if key not in status_capabilities:
+                status_capabilities[key] = capabilities_for(key).label_supported
+        action_supported = (
+            formula_status.map(status_capabilities)
+            .astype("boolean")
+            .fillna(False)
+        )
+        endpoint_valid = (
+            present
+            & trade_known
+            & (traded | verified_suspension)
+            & effective_close_valid.to_numpy()
+            & action_supported.to_numpy(dtype=bool)
+            & np.where(traded, close_valid.to_numpy(), True)
+        )
+        history_valid = (
+            endpoint_valid
+            & np.where(traded, turnover_valid.to_numpy(), True)
+        )
+        invalid_reason = np.full(len(calendar), "none", dtype=object)
+        invalid_reason[~present] = "unknown_gap"
+        present_indices = np.flatnonzero(present)
+        if len(present_indices):
+            invalid_reason[: present_indices[0]] = "insufficient_observed_history"
+        invalid_reason[present & ~trade_known] = "unknown_trade_status"
+        invalid_reason[
+            unverified_nontrading & ~contradictory_nontrading
+        ] = "unverified_suspension"
+        invalid_reason[contradictory_nontrading] = "contradictory_trade_status"
+        unsupported_action = (
+            present & trade_known & ~action_supported.to_numpy(dtype=bool)
+        )
+        invalid_reason[unsupported_action] = "unsupported_corporate_action"
+        invalid_reason[
+            present
+            & trade_known
+            & action_supported.to_numpy(dtype=bool)
+            & traded
+            & ~close_valid.to_numpy()
+        ] = "invalid_traded_price"
+        invalid_reason[
+            present
+            & trade_known
+            & action_supported.to_numpy(dtype=bool)
+            & traded
+            & close_valid.to_numpy()
+            & ~turnover_valid.to_numpy()
+        ] = "invalid_turnover"
+        invalid_reason[
+            present
+            & trade_known
+            & action_supported.to_numpy(dtype=bool)
+            & verified_suspension
+            & ~effective_close_valid.to_numpy()
+        ] = "suspension_without_price"
+
+        active: deque[tuple[pd.Timestamp, float, float]] = deque()
+        invalid_dates: deque[tuple[pd.Timestamp, str]] = deque()
+        turnover_above_one_dates: deque[pd.Timestamp] = deque()
+        base_mass = 0.0
+        base_price_mass = 0.0
+        scale = 1.0
+        close_values = effective_close.to_numpy(dtype=float)
+        turnover_values = turnover_probability.to_numpy(dtype=float)
+        positions = indexed["_overhang_position"].to_numpy()
+
+        for index, date in enumerate(calendar):
+            lower = date - pd.DateOffset(years=3)
+            while active and active[0][0] <= lower:
+                _, base_weight, price = active.popleft()
+                base_mass -= base_weight
+                base_price_mass -= base_weight * price
+            while invalid_dates and invalid_dates[0][0] <= lower:
+                invalid_dates.popleft()
+            while turnover_above_one_dates and turnover_above_one_dates[0] <= lower:
+                turnover_above_one_dates.popleft()
+
+            position = positions[index]
+            has_full_calendar = calendar[0] <= lower
+            current_valid = bool(endpoint_valid[index])
+            if pd.notna(position):
+                output_index = int(position)
+                turnover_above_one_count[output_index] = len(
+                    turnover_above_one_dates
+                )
+                if not has_full_calendar:
+                    overhang_reason[output_index] = "insufficient_calendar"
+                elif not current_valid:
+                    overhang_reason[output_index] = (
+                        "current_" + str(invalid_reason[index])
+                    )
+                elif invalid_dates:
+                    overhang_reason[output_index] = (
+                        "invalid_history_" + invalid_dates[-1][1]
+                    )
+                elif not base_mass > 0.0:
+                    overhang_reason[output_index] = "no_turnover_mass"
+                elif not (
+                    np.isfinite(base_mass) and np.isfinite(base_price_mass)
+                ):
+                    overhang_reason[output_index] = "nonfinite_reference"
+                else:
+                    current_price = close_values[index]
+                    reference_price = base_price_mass / base_mass
+                    value = (current_price - reference_price) / current_price
+                    if np.isfinite(value):
+                        overhang[output_index] = value
+                        overhang_reason[output_index] = "none"
+                    else:
+                        overhang_reason[output_index] = "nonfinite_reference"
+
+                if pd.isna(overhang[output_index]):
+                    contrarian_reason[output_index] = overhang_reason[output_index]
+                elif index < 5:
+                    contrarian_reason[output_index] = "insufficient_five_day_history"
+                elif not bool(endpoint_valid[index - 5]):
+                    contrarian_reason[output_index] = "invalid_stock_endpoint"
+                else:
+                    current_price = close_values[index]
+                    prior_price = close_values[index - 5]
+                    benchmark_return = benchmark_return_by_date.get(date)
+                    if (
+                        benchmark_return is None
+                        or not np.isfinite(benchmark_return)
+                    ):
+                        contrarian_reason[output_index] = "invalid_benchmark_endpoint"
+                    elif prior_price <= 0.0 or not np.isfinite(prior_price):
+                        contrarian_reason[output_index] = "invalid_stock_endpoint"
+                    else:
+                        excess_return = (
+                            current_price / prior_price - 1.0 - benchmark_return
+                        )
+                        value = overhang[output_index]
+                        contrarian[output_index] = (
+                            -excess_return if value * excess_return < 0.0 else 0.0
+                        )
+                        contrarian_reason[output_index] = "none"
+
+            if not bool(history_valid[index]):
+                invalid_dates.append((date, str(invalid_reason[index])))
+                continue
+            if traded[index] and turnover_raw.iloc[index] > 100.0:
+                turnover_above_one_dates.append(date)
+            turnover = turnover_values[index]
+            if turnover >= 1.0:
+                active.clear()
+                base_mass = 0.0
+                base_price_mass = 0.0
+                scale = 1.0
+            else:
+                scale *= 1.0 - turnover
+                if scale < 1e-100:
+                    rebased: deque[tuple[pd.Timestamp, float, float]] = deque()
+                    for item_date, base_weight, price in active:
+                        rebased.append((item_date, base_weight * scale, price))
+                    active = rebased
+                    base_mass *= scale
+                    base_price_mass *= scale
+                    scale = 1.0
+            if turnover > 0.0:
+                base_weight = turnover / scale
+                price = close_values[index]
+                active.append((date, base_weight, price))
+                base_mass += base_weight
+                base_price_mass += base_weight * price
+
+    frame["capital_gain_overhang_3y"] = overhang
+    frame["overhang_contrarian_5"] = contrarian
+    frame["capital_gain_overhang_3y_missing_reason"] = overhang_reason
+    frame["overhang_contrarian_5_missing_reason"] = contrarian_reason
+    frame["turnover_above_100_count_3y"] = turnover_above_one_count
+    for feature in CAPITAL_GAIN_OVERHANG_MODEL_FEATURES:
+        frame[f"{feature}_missing"] = frame[feature].isna().astype("int8")
+        _add_daily_cross_section_rank(frame, feature)
+    frame = frame.drop(columns="_overhang_position")
     return frame
 
 

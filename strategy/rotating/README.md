@@ -2,7 +2,7 @@
 
 日频横截面轮动策略：固定因子、Elastic Net 与浅层 GBRT 三方赛马，五日分片持有，T+1 开盘执行。
 
-当前状态：三个公共 seam 已按 TDD 实现；正式全市场赛马选择浅层 GBRT 作为默认研究信号。v0.2 使用 `T+6 open / T+1 open - 1` 的五日端点区间标签，而不是下一日涨幅，并使用八项日线增强特征。路径均值标签先在 v0.2 口径失败；在后续涨跌停状态 bundle 上再次比较时虽改善全期聚合表现，但仍只取得一个年度收益与 Sharpe 双胜，未通过事前跨年度门槛。五日涨跌停状态 bundle 本身通过全部开发数据与表现门槛，登记为等待全新前向验证的开发集胜者；由于历史成本和 20bp 口径的绝对收益仍为负，它不自动替换默认 v0.2。流水线按年构建 PIT 面板、按季度冻结模型，并使用 T+1 开盘、历史时变成本和公司行为感知执行回测。
+当前状态：三个公共 seam 已按 TDD 实现；正式全市场赛马选择浅层 GBRT 作为默认研究信号。v0.2 使用 `T+6 open / T+1 open - 1` 的五日端点区间标签，而不是下一日涨幅，并使用八项日线增强特征。路径均值标签先在 v0.2 口径失败；在后续涨跌停状态 bundle 上再次比较时虽改善全期聚合表现，但仍只取得一个年度收益与 Sharpe 双胜。五日涨跌停状态 bundle 本身通过全部开发门槛，登记为等待全新前向验证的开发集胜者；其上的持仓成本 overhang—条件反转 bundle 又因历史费用与跨年度失败而淘汰。由于已胜出的涨跌停版本在历史成本和 20bp 口径的绝对收益仍为负，它不自动替换默认 v0.2。流水线按年构建 PIT 面板、按季度冻结模型，并使用 T+1 开盘、历史时变成本和公司行为感知执行回测。
 
 ```powershell
 # 首次按 data/README.md 构建最小 PIT 数据：
@@ -128,6 +128,54 @@ tar -xzf data\raw\simtradelab\simtradelab-data-cn-2026-05-26.tar.gz `
   --price-limit-diagnostics strategy\rotating\reports\experiments\v4_price_limit_dev\FEATURE_DIAGNOSTICS.json `
   --output strategy\rotating\reports\experiments\v5_price_limit_path_dev\LABEL_DIAGNOSTICS.json
 
+# 严格三年持仓成本 overhang + 五日相对沪深300异号反转（开发期淘汰）：
+.venv\Scripts\python.exe -m strategy.rotating.cli.run_pipeline build-panel `
+  --start 2015-01-01 --end 2023-12-31 --data-cutoff 2023-12-31 `
+  --feature-set enhanced `
+  --panel-root strategy\rotating\cache\experiments\v6_corrected_limit_history_panel
+.venv\Scripts\python.exe -m strategy.rotating.cli.run_pipeline augment-price-limit-panel `
+  --start 2015-01-01 --end 2023-12-31 --feature-set price_limit `
+  --frozen-panel-root strategy\rotating\cache\experiments\v6_corrected_limit_history_panel `
+  --panel-root strategy\rotating\cache\experiments\v6_price_limit_history_panel
+foreach ($year in 2018..2023) {
+  Copy-Item -Force `
+    "strategy\rotating\cache\experiments\v4_price_limit_dev_panel\year=$year\panel.parquet" `
+    "strategy\rotating\cache\experiments\v6_price_limit_history_panel\year=$year\panel.parquet"
+}
+.venv\Scripts\python.exe -m strategy.rotating.cli.run_pipeline augment-overhang-panel `
+  --start 2018-01-01 --end 2023-12-31 --feature-set overhang `
+  --frozen-panel-root strategy\rotating\cache\experiments\v6_price_limit_history_panel `
+  --panel-root strategy\rotating\cache\experiments\v6_overhang_dev_panel
+.venv\Scripts\python.exe -m strategy.rotating.cli.run_pipeline score `
+  --start 2021-01-01 --end 2023-12-31 --feature-set price_limit `
+  --panel-root strategy\rotating\cache\experiments\v6_price_limit_history_panel `
+  --score-root strategy\rotating\cache\experiments\v6_overhang_baseline_scores
+.venv\Scripts\python.exe -m strategy.rotating.cli.run_pipeline score `
+  --start 2021-01-01 --end 2023-12-31 --feature-set overhang `
+  --target-column target_rank `
+  --panel-root strategy\rotating\cache\experiments\v6_overhang_dev_panel `
+  --score-root strategy\rotating\cache\experiments\v6_overhang_scores
+.venv\Scripts\python.exe -m strategy.rotating.cli.run_pipeline backtest `
+  --start 2021-01-01 --end 2023-12-31 --feature-set price_limit `
+  --score-root strategy\rotating\cache\experiments\v6_overhang_baseline_scores `
+  --report-root strategy\rotating\reports\experiments\v6_overhang_baseline_dev
+.venv\Scripts\python.exe -m strategy.rotating.cli.run_pipeline backtest `
+  --start 2021-01-01 --end 2023-12-31 --feature-set overhang `
+  --score-root strategy\rotating\cache\experiments\v6_overhang_scores `
+  --report-root strategy\rotating\reports\experiments\v6_overhang_dev `
+  --experiment-decision rejected_on_development
+.venv\Scripts\python.exe -m strategy.rotating.experiments.build_overhang_diagnostics `
+  --baseline-panel-root strategy\rotating\cache\experiments\v4_price_limit_dev_panel `
+  --history-panel-root strategy\rotating\cache\experiments\v6_price_limit_history_panel `
+  --candidate-panel-root strategy\rotating\cache\experiments\v6_overhang_dev_panel `
+  --reference-score-root strategy\rotating\cache\experiments\v4_price_limit_scores `
+  --baseline-score-root strategy\rotating\cache\experiments\v6_overhang_baseline_scores `
+  --candidate-score-root strategy\rotating\cache\experiments\v6_overhang_scores `
+  --baseline-report-root strategy\rotating\reports\experiments\v6_overhang_baseline_dev `
+  --candidate-report-root strategy\rotating\reports\experiments\v6_overhang_dev `
+  --price-limit-diagnostics strategy\rotating\reports\experiments\v4_price_limit_dev\FEATURE_DIAGNOSTICS.json `
+  --output strategy\rotating\reports\experiments\v6_overhang_dev\FEATURE_DIAGNOSTICS.json
+
 # 只在上述开发期结果冻结端点标签后，构建并评分一次留出期：
 .venv\Scripts\python.exe -m strategy.rotating.cli.run_pipeline build-panel `
   --start 2021-01-01 --end 2026-05-22 --data-cutoff 2026-05-22 `
@@ -149,6 +197,6 @@ Copy-Item -Recurse `
 .venv\Scripts\python.exe run.py rotating --date 2026-05-22
 ```
 
-当前正式结果见 [`reports/development/PERFORMANCE.md`](reports/development/PERFORMANCE.md) 与 [`reports/holdout/PERFORMANCE.md`](reports/holdout/PERFORMANCE.md)，标签/特征选择过程见 [`experiments/20260716_interval_label_feature_race.md`](experiments/20260716_interval_label_feature_race.md)。后续固定市场门控和行业规模残差价值—质量 bundle 均在开发期失败；五日涨跌停状态 bundle 则只成为等待全新前向验证的开发集胜者，其上的五日路径均值标签也因跨年度不足而淘汰，详见 [`experiments/20260716_market_gate_feature_race.md`](experiments/20260716_market_gate_feature_race.md)、[`experiments/20260716_industry_size_value_quality_race.md`](experiments/20260716_industry_size_value_quality_race.md)、[`experiments/20260717_price_limit_state_feature_race.md`](experiments/20260717_price_limit_state_feature_race.md) 与 [`experiments/20260717_price_limit_path_label_race.md`](experiments/20260717_price_limit_path_label_race.md)。结果用于研究，不构成收益承诺；既有封存期已打开，不能用于继续调参。
+当前正式结果见 [`reports/development/PERFORMANCE.md`](reports/development/PERFORMANCE.md) 与 [`reports/holdout/PERFORMANCE.md`](reports/holdout/PERFORMANCE.md)，标签/特征选择过程见 [`experiments/20260716_interval_label_feature_race.md`](experiments/20260716_interval_label_feature_race.md)。后续固定市场门控和行业规模残差价值—质量 bundle 均在开发期失败；五日涨跌停状态 bundle 只成为等待全新前向验证的开发集胜者，其上的五日路径均值标签和持仓成本 overhang—条件反转 bundle 也分别因跨年度、历史费用门槛而淘汰。详见 [`experiments/20260716_market_gate_feature_race.md`](experiments/20260716_market_gate_feature_race.md)、[`experiments/20260716_industry_size_value_quality_race.md`](experiments/20260716_industry_size_value_quality_race.md)、[`experiments/20260717_price_limit_state_feature_race.md`](experiments/20260717_price_limit_state_feature_race.md)、[`experiments/20260717_price_limit_path_label_race.md`](experiments/20260717_price_limit_path_label_race.md) 与 [`experiments/20260717_capital_gain_overhang_feature_race.md`](experiments/20260717_capital_gain_overhang_feature_race.md)。结果用于研究，不构成收益承诺；既有封存期已打开，不能用于继续调参。
 
 详见 [`docs/STRATEGY.md`](docs/STRATEGY.md)。

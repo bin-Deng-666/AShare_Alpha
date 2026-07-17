@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 import duckdb
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -11,10 +12,16 @@ from strategy.rotating.experiments import (
     build_industry_size_diagnostics as industry_diagnostics,
 )
 from strategy.rotating.experiments import (
+    build_overhang_diagnostics as overhang_diagnostics,
+)
+from strategy.rotating.experiments import (
     build_price_limit_diagnostics as price_limit_diagnostics,
 )
 from strategy.rotating.experiments import (
     build_path_label_diagnostics as path_label_diagnostics,
+)
+from strategy.rotating.features.build_panel import (
+    add_capital_gain_overhang_features,
 )
 
 
@@ -157,6 +164,279 @@ def test_path_label_stability_uses_daily_top_quartile_not_top_25_names(
     assert result["models"]["gbrt"][
         "mean_daily_top25pct_overlap"
     ] == pytest.approx(25 / 30)
+
+
+def test_capital_gain_overhang_uses_survival_weights_and_excludes_signal_turnover(
+) -> None:
+    dates = pd.bdate_range("2020-01-02", "2023-01-03")
+    close = pd.Series(9.0, index=dates)
+    close.loc[dates[-6]] = 12.0
+    close.loc[dates[-3:-1]] = 8.0
+    close.loc[dates[-1]] = 10.0
+    turnover = pd.Series(0.0, index=dates)
+    turnover.loc[dates[-3]] = 25.0
+    turnover.loc[dates[-2]] = 50.0
+    turnover.loc[dates[-1]] = 99.0
+    source = pd.DataFrame(
+        {
+            "code": "000001",
+            "date": dates,
+            "close": close.to_numpy(),
+            "volume": 1_000.0,
+            "amount": 10_000.0,
+            "turnover_pct": turnover.to_numpy(),
+            "trade_status": True,
+            "corporate_action_formula_status": "none",
+            "eligible": True,
+        }
+    )
+    benchmark = pd.DataFrame({"date": dates, "close": 100.0})
+
+    result = add_capital_gain_overhang_features(
+        source,
+        benchmark=benchmark,
+        market_dates=dates,
+    )
+    signal = result.loc[result["date"].eq(dates[-1])].iloc[0]
+
+    expected_reference_price = (0.5 * 8.0 + 0.25 * 0.5 * 8.0) / (
+        0.5 + 0.25 * 0.5
+    )
+    assert expected_reference_price == pytest.approx(8.0)
+    assert signal["capital_gain_overhang_3y"] == pytest.approx(0.2)
+    assert signal["overhang_contrarian_5"] == pytest.approx(1.0 - 10.0 / 12.0)
+    assert signal["capital_gain_overhang_3y_missing"] == 0
+    assert signal["overhang_contrarian_5_missing"] == 0
+
+    changed = source.copy()
+    changed.loc[changed["date"].eq(dates[-1]), "turnover_pct"] = 1.0
+    changed_signal = add_capital_gain_overhang_features(
+        changed,
+        benchmark=benchmark,
+        market_dates=dates,
+    ).iloc[-1]
+    assert changed_signal["capital_gain_overhang_3y"] == pytest.approx(
+        signal["capital_gain_overhang_3y"]
+    )
+    missing_signal_turnover = source.copy()
+    missing_signal_turnover.loc[
+        missing_signal_turnover["date"].eq(dates[-1]), "turnover_pct"
+    ] = np.nan
+    missing_signal = add_capital_gain_overhang_features(
+        missing_signal_turnover,
+        benchmark=benchmark,
+        market_dates=dates,
+    ).iloc[-1]
+    assert missing_signal["capital_gain_overhang_3y"] == pytest.approx(
+        signal["capital_gain_overhang_3y"]
+    )
+
+
+def test_capital_gain_overhang_preserves_suspension_but_rejects_unknown_gap() -> None:
+    dates = pd.bdate_range("2020-01-02", "2023-01-03")
+
+    def rows(code: str) -> pd.DataFrame:
+        return pd.DataFrame(
+            {
+                "code": code,
+                "date": dates,
+                "close": [8.0] * (len(dates) - 1) + [10.0],
+                "volume": 1_000.0,
+                "amount": 10_000.0,
+                "turnover_pct": 1.0,
+                "trade_status": True,
+                "corporate_action_formula_status": "none",
+                "eligible": True,
+            }
+        )
+
+    complete = rows("000001")
+    suspended = rows("000002")
+    suspended.loc[suspended["date"].eq(dates[-6]), "trade_status"] = False
+    suspended.loc[
+        suspended["date"].eq(dates[-6]),
+        ["volume", "amount", "turnover_pct"],
+    ] = 0.0
+    suspended.loc[suspended["date"].eq(dates[-6]), "close"] = 99.0
+    gap = rows("000003").loc[lambda frame: frame["date"].ne(dates[-10])]
+    contradictory = rows("000004")
+    contradictory.loc[
+        contradictory["date"].eq(dates[-10]), ["trade_status", "turnover_pct"]
+    ] = [False, pd.NA]
+    source = pd.concat(
+        [complete, suspended, gap, contradictory], ignore_index=True
+    )
+    benchmark = pd.DataFrame({"date": dates, "close": 100.0})
+
+    result = add_capital_gain_overhang_features(
+        source,
+        benchmark=benchmark,
+        market_dates=dates,
+    )
+    signal = result.loc[result["date"].eq(dates[-1])].set_index("code")
+
+    assert pd.notna(signal.loc["000001", "capital_gain_overhang_3y"])
+    assert pd.notna(signal.loc["000002", "capital_gain_overhang_3y"])
+    assert signal.loc[
+        "000002", "capital_gain_overhang_3y"
+    ] == pytest.approx(signal.loc["000001", "capital_gain_overhang_3y"])
+    assert signal.loc[
+        "000002", "overhang_contrarian_5"
+    ] == pytest.approx(signal.loc["000001", "overhang_contrarian_5"])
+    assert pd.isna(signal.loc["000003", "capital_gain_overhang_3y"])
+    assert pd.isna(signal.loc["000004", "capital_gain_overhang_3y"])
+    assert signal.loc["000003", "capital_gain_overhang_3y_missing"] == 1
+    assert signal.loc[
+        "000003", "capital_gain_overhang_3y_missing_reason"
+    ] == "invalid_history_unknown_gap"
+    assert signal.loc[
+        "000002", "capital_gain_overhang_3y_missing_reason"
+    ] == "none"
+    assert signal.loc[
+        "000004", "capital_gain_overhang_3y_missing_reason"
+    ] == "invalid_history_contradictory_trade_status"
+
+
+def test_capital_gain_overhang_audits_turnover_above_one_without_clipping_raw() -> None:
+    dates = pd.bdate_range("2020-01-02", "2023-01-03")
+    source = pd.DataFrame(
+        {
+            "code": "000001",
+            "date": dates,
+            "close": 10.0,
+            "volume": 1_000.0,
+            "amount": 10_000.0,
+            "turnover_pct": 1.0,
+            "trade_status": True,
+            "corporate_action_formula_status": "none",
+            "eligible": True,
+        }
+    )
+    source.loc[source["date"].eq(dates[-2]), "turnover_pct"] = 150.0
+    benchmark = pd.DataFrame({"date": dates, "close": 100.0})
+
+    signal = add_capital_gain_overhang_features(
+        source,
+        benchmark=benchmark,
+        market_dates=dates,
+    ).iloc[-1]
+
+    assert signal["turnover_above_100_count_3y"] == 1
+    assert signal["capital_gain_overhang_3y_missing_reason"] == "none"
+
+
+def test_capital_gain_overhang_distinguishes_short_history_from_internal_gap() -> None:
+    dates = pd.bdate_range("2020-01-02", "2023-01-03")
+    source = pd.DataFrame(
+        {
+            "code": "000001",
+            "date": dates[100:],
+            "close": 10.0,
+            "volume": 1_000.0,
+            "amount": 10_000.0,
+            "turnover_pct": 1.0,
+            "trade_status": True,
+            "corporate_action_formula_status": "none",
+            "eligible": True,
+        }
+    )
+    benchmark = pd.DataFrame({"date": dates, "close": 100.0})
+
+    signal = add_capital_gain_overhang_features(
+        source,
+        benchmark=benchmark,
+        market_dates=dates,
+    ).iloc[-1]
+
+    assert signal["capital_gain_overhang_3y_missing_reason"] == (
+        "invalid_history_insufficient_observed_history"
+    )
+
+
+def test_overhang_panel_identity_ignores_only_registered_additional_columns(
+    tmp_path,
+) -> None:
+    baseline_path = tmp_path / "baseline.parquet"
+    candidate_path = tmp_path / "candidate.parquet"
+    baseline = pd.DataFrame(
+        {
+            "code": ["000001", "000002"],
+            "date": pd.to_datetime(["2023-01-03", "2023-01-03"]),
+            "target_rank": [0.2, -0.1],
+        }
+    )
+    baseline.to_parquet(baseline_path, index=False)
+    baseline.assign(rank_capital_gain_overhang_3y=[0.4, -0.3]).to_parquet(
+        candidate_path, index=False
+    )
+    connection = duckdb.connect()
+
+    identity = overhang_diagnostics._panel_identity(
+        connection,
+        baseline_glob=baseline_path.as_posix(),
+        candidate_glob=candidate_path.as_posix(),
+        start="2023-01-01",
+        end="2023-12-31",
+    )
+    connection.close()
+
+    assert identity["baseline_rows"] == identity["candidate_rows"] == 2
+    assert identity["candidate_only_keys"] == 0
+    assert identity["baseline_only_keys"] == 0
+    assert identity["old_value_differences"] == 0
+    assert identity["missing_baseline_columns"] == []
+
+
+def test_overhang_diagnostics_audit_nontrading_status_semantics(tmp_path) -> None:
+    path = tmp_path / "panel.parquet"
+    pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2023-01-03"] * 4),
+            "trade_status": [pd.NA, False, False, False],
+            "amount": [0.0, 0.0, 10_000.0, pd.NA],
+            "volume": [0.0, 0.0, 1_000.0, pd.NA],
+            "capital_gain_overhang_3y": [pd.NA] * 4,
+            "overhang_contrarian_5": [pd.NA] * 4,
+        }
+    ).to_parquet(path, index=False)
+    connection = duckdb.connect()
+
+    audit = overhang_diagnostics._nontrading_status_audit(
+        connection,
+        panel_glob=path.as_posix(),
+        start="2023-01-01",
+        end="2023-12-31",
+    )
+    connection.close()
+
+    assert audit == {
+        "unknown_trade_status_rows": 1,
+        "verified_zero_activity_suspension_rows": 1,
+        "contradictory_nontrading_rows": 1,
+        "unverified_nontrading_rows": 1,
+        "contradictory_nontrading_rows_with_nonnull_signal": 0,
+    }
+
+
+def test_overhang_diagnostics_audit_required_history_partitions(tmp_path) -> None:
+    path = tmp_path / "history" / "year=2020" / "panel.parquet"
+    path.parent.mkdir(parents=True)
+    pd.DataFrame(
+        {"date": pd.to_datetime(["2020-01-02", "2020-12-31"])}
+    ).to_parquet(path, index=False)
+    connection = duckdb.connect()
+
+    audit = overhang_diagnostics._history_partition_audit(
+        connection,
+        root=tmp_path / "history",
+        start_year=2020,
+        end_year=2021,
+    )
+    connection.close()
+
+    assert audit["present_years"] == [2020]
+    assert audit["missing_years"] == [2021]
+    assert audit["partitions"][0]["max_date"] == "2020-12-31"
 
 
 def test_price_limit_event_diagnostics_do_not_force_cross_direction_exclusivity(
@@ -500,6 +780,93 @@ def test_price_limit_augmentation_rejects_in_place_mutation(tmp_path) -> None:
             "2023-12-31",
             input_root=tmp_path / "panel",
             output_root=tmp_path / "panel",
+        )
+
+
+def test_overhang_augmentation_uses_three_year_history_and_caps_reads(
+    tmp_path, monkeypatch
+) -> None:
+    dates = pd.bdate_range("2020-01-02", "2023-01-04")
+    public_end = pd.Timestamp("2023-01-03")
+    source = pd.DataFrame(
+        {
+            "code": "000001",
+            "date": dates,
+            "close": 10.0,
+            "volume": 1_000.0,
+            "amount": 10_000.0,
+            "turnover_pct": 1.0,
+            "trade_status": True,
+            "corporate_action_formula_status": "none",
+            "eligible": True,
+            "target_rank": 0.0,
+        }
+    )
+    input_root = tmp_path / "frozen"
+    for year, partition in source.groupby(source["date"].dt.year):
+        path = input_root / f"year={year}" / "panel.parquet"
+        path.parent.mkdir(parents=True)
+        partition.to_parquet(path, index=False)
+    benchmark = pd.DataFrame({"date": dates, "close": 100.0})
+    real_read_parquet = pd.read_parquet
+    observed_filters = []
+
+    def guarded_read_parquet(path, *args, **kwargs):
+        filters = kwargs.get("filters")
+        assert filters is not None
+        observed_filters.append(filters)
+        loaded = real_read_parquet(path, *args, **kwargs)
+        assert loaded["date"].max() <= public_end
+        return loaded
+
+    monkeypatch.setattr(pipeline.pd, "read_parquet", guarded_read_parquet)
+    outputs = pipeline.augment_panel_dataset_with_capital_gain_overhang_features(
+        str(public_end.date()),
+        str(public_end.date()),
+        input_root=input_root,
+        output_root=tmp_path / "candidate",
+        benchmark=benchmark,
+    )
+
+    candidate = real_read_parquet(outputs[0])
+    assert candidate["date"].tolist() == [public_end]
+    assert candidate["capital_gain_overhang_3y"].notna().all()
+    assert candidate["overhang_contrarian_5"].notna().all()
+    assert all(
+        max(value for column, operator, value in filters if column == "date")
+        <= public_end
+        for filters in observed_filters
+    )
+
+
+def test_overhang_augmentation_rejects_in_place_mutation(tmp_path) -> None:
+    with pytest.raises(ValueError, match="separate output root"):
+        pipeline.augment_panel_dataset_with_capital_gain_overhang_features(
+            "2023-01-01",
+            "2023-12-31",
+            input_root=tmp_path / "panel",
+            output_root=tmp_path / "panel",
+        )
+
+
+def test_overhang_augmentation_rejects_missing_history_partition(tmp_path) -> None:
+    input_root = tmp_path / "frozen"
+    for year in (2020, 2022, 2023):
+        path = input_root / f"year={year}" / "panel.parquet"
+        path.parent.mkdir(parents=True)
+        pd.DataFrame({"date": [pd.Timestamp(year, 1, 2)]}).to_parquet(
+            path, index=False
+        )
+
+    with pytest.raises(ValueError, match="missing.*2021"):
+        pipeline.augment_panel_dataset_with_capital_gain_overhang_features(
+            "2023-01-01",
+            "2023-12-31",
+            input_root=input_root,
+            output_root=tmp_path / "candidate",
+            benchmark=pd.DataFrame(
+                {"date": [pd.Timestamp("2023-01-03")], "close": [100.0]}
+            ),
         )
 
 

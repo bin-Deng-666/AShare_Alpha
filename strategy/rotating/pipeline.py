@@ -19,6 +19,7 @@ from strategy.rotating.features.build_panel import (
     ENDPOINT_TARGET_COLUMN,
     MODEL_INPUT_FEATURES,
     MODEL_TARGET_COLUMN,
+    add_capital_gain_overhang_features,
     add_industry_size_residual_features,
     add_price_limit_state_features,
     build_factor_panel,
@@ -245,6 +246,104 @@ def augment_panel_dataset_with_price_limit_features(
         output_frame = augmented.loc[use].reset_index(drop=True)
         output = target_root / f"year={year}" / "panel.parquet"
         _atomic_parquet(output_frame, output)
+        outputs.append(output)
+    return outputs
+
+
+def augment_panel_dataset_with_capital_gain_overhang_features(
+    start: str,
+    end: str,
+    *,
+    input_root: str | Path,
+    output_root: str | Path,
+    benchmark: pd.DataFrame | None = None,
+) -> list[Path]:
+    """Add the fixed three-year overhang bundle to frozen panel partitions."""
+    first = pd.Timestamp(start).normalize()
+    last = pd.Timestamp(end).normalize()
+    source_root = Path(input_root)
+    target_root = Path(output_root)
+    if source_root.resolve() == target_root.resolve():
+        raise ValueError(
+            "capital-gain overhang augmentation requires a separate output root"
+        )
+    history_start = first - pd.DateOffset(years=3)
+    missing_source_years = [
+        year
+        for year in range(history_start.year, last.year + 1)
+        if not (source_root / f"year={year}" / "panel.parquet").is_file()
+    ]
+    if missing_source_years:
+        raise ValueError(
+            "capital-gain overhang frozen panel is missing required year partitions: "
+            + ", ".join(map(str, missing_source_years))
+        )
+
+    benchmark_start = first - pd.DateOffset(years=3) - pd.DateOffset(days=31)
+    benchmark_frame = (
+        load_index_bars("000300", benchmark_start, last)
+        if benchmark is None
+        else benchmark.copy()
+    )
+    benchmark_frame["date"] = pd.to_datetime(
+        benchmark_frame["date"]
+    ).dt.normalize()
+    benchmark_frame = benchmark_frame.loc[
+        benchmark_frame["date"].between(benchmark_start, last)
+    ].copy()
+    if benchmark_frame.empty:
+        raise ValueError("capital-gain overhang benchmark is empty")
+    if benchmark_frame["date"].max() > last:
+        raise ValueError("capital-gain overhang benchmark exceeds the public end date")
+
+    outputs: list[Path] = []
+    for year in range(first.year, last.year + 1):
+        partition_start = max(first, pd.Timestamp(year=year, month=1, day=1))
+        partition_end = min(last, pd.Timestamp(year=year, month=12, day=31))
+        load_start = partition_start - pd.DateOffset(years=3) - pd.DateOffset(days=31)
+        partition_benchmark = benchmark_frame.loc[
+            benchmark_frame["date"].between(load_start, partition_end)
+        ].copy()
+        market_dates = pd.DatetimeIndex(
+            partition_benchmark["date"].dropna().unique()
+        ).sort_values()
+        if market_dates.empty:
+            raise ValueError(
+                "capital-gain overhang benchmark has no rows through "
+                f"{partition_end.date()}"
+            )
+
+        parts: list[pd.DataFrame] = []
+        for source_year in range(load_start.year, partition_end.year + 1):
+            source_path = source_root / f"year={source_year}" / "panel.parquet"
+            if not source_path.exists():
+                continue
+            parts.append(
+                pd.read_parquet(
+                    source_path,
+                    filters=[
+                        ("date", ">=", load_start),
+                        ("date", "<=", partition_end),
+                    ],
+                )
+            )
+        if not parts:
+            raise ValueError(
+                f"frozen panel has no rows for {load_start.date()} through "
+                f"{partition_end.date()}"
+            )
+        panel = pd.concat(parts, ignore_index=True)
+        augmented = add_capital_gain_overhang_features(
+            panel,
+            benchmark=partition_benchmark,
+            market_dates=market_dates,
+            copy=False,
+        )
+        use = pd.to_datetime(augmented["date"]).dt.normalize().between(
+            partition_start, partition_end
+        )
+        output = target_root / f"year={year}" / "panel.parquet"
+        _atomic_parquet(augmented.loc[use].reset_index(drop=True), output)
         outputs.append(output)
     return outputs
 

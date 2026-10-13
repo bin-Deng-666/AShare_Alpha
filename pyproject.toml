@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ashare-alpha"
+version = "0.1.0"
+description = "Audited A-share data, strategy research, daily backtesting and next-session plans"
+readme = "README.md"
+requires-python = ">=3.10,<3.14"
+license = "MIT"
+authors = [{name = "AShare Alpha contributors"}]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Operating System :: POSIX :: Linux",
+  "Operating System :: MacOS",
+  "Programming Language :: Python :: 3",
+  "Topic :: Office/Business :: Financial :: Investment",
+]
+dependencies = [
+  "numpy>=1.24,<3", "pandas>=2.0,<3", "pyarrow>=14,<24", "duckdb>=1.0,<2",
+]
+
+[project.optional-dependencies]
+data = [
+  "akshare>=1.18.63,<1.19", "baostock>=0.9.3,<1", "requests>=2.31,<3",
+  "mini-racer>=0.12.4,<1; platform_system != 'Linux'",
+]
+web = ["fastapi>=0.115,<1", "uvicorn>=0.24,<1", "pyyaml>=6,<7"]
+dev = ["ashare-alpha[web,data]", "pytest>=8,<10", "httpx>=0.27,<1", "ruff>=0.14,<1", "build>=1.2,<2"]
+
+[project.scripts]
+ashare-alpha = "ashare_alpha.__main__:main"
+ashare-data = "data.__main__:main"
+ashare-plan = "cli.run:main"
+ashare-web = "webui.server:main"
+
+[project.urls]
+Repository = "https://github.com/bin-Deng-666/AShare_Alpha"
+Issues = "https://github.com/bin-Deng-666/AShare_Alpha/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["ashare_alpha*", "backtest*", "cli*", "data*", "strategy", "strategy.demo*", "strategy.research*", "webui", "webui.app", "webui.app.api", "webui.app.core", "webui.app.strategies", "webui.app.strategies.demo"]
+exclude = ["*.tests*", "data.parquet*", "data.state*", "data.catalog*", "webui.jobs*"]
+namespaces = false
+
+[tool.setuptools.package-data]
+data = ["config/*.json"]
+"strategy.demo" = ["presets/*.json"]
+webui = ["static/*.html", "static/*.css", "static/*.js", "app/strategies/demo/strategy.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "backtest/tests", "data/tests", "strategy/demo/tests", "webui/tests"]
+addopts = "-ra"
+
+[tool.ruff]
+target-version = "py310"
+include = ["ashare_alpha/**/*.py", "tests/**/*.py", "scripts/**/*.py", "webui/**/*.py", "cli/**/*.py", "strategy/demo/**/*.py", "strategy/research/**/*.py"]
+exclude = ["webui/tests/mock_strategy"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]

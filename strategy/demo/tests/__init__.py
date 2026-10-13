@@ -1,0 +1,1 @@
+"""Single-security example tests."""

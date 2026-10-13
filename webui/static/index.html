@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AShare Alpha · 次日交易计划</title>
+<link rel="stylesheet" href="/static/style.css?v=20261013">
+<script src="/static/app.js?v=20261013" defer></script>
+</head>
+<body>
+<header class="header">
+  <a class="brand" href="/" aria-label="AShare Alpha 首页"><span class="brand-mark">A</span><span>AShare Alpha<small>次日交易计划</small></span></a>
+  <div class="strategy-picker"><label for="strategy-select">选择策略</label><select id="strategy-select" aria-label="选择策略"></select></div>
+</header>
+<main>
+  <section class="hero" aria-labelledby="page-title">
+    <div><p class="eyebrow">收盘后 · 为下一交易日准备</p><h1 id="page-title">更新行情，看下一步买卖</h1><p class="subheading">按所选策略生成计划，买卖数量来自模型账户。</p></div>
+    <div class="actions"><button id="prepare-button" class="button primary" disabled>更新数据并生成计划</button><button id="generate-button" class="button secondary" disabled>用已更新数据重新生成</button></div>
+  </section>
+  <div id="page-error" class="notice error" role="alert" hidden></div>
+  <section class="coverage" aria-label="数据与计划日期">
+    <div><span>最新已收盘交易日</span><strong id="closed-date">—</strong></div>
+    <div><span>已核验行情至</span><strong id="data-date">—</strong></div>
+    <div><span>当前策略</span><strong id="strategy-name">—</strong></div>
+    <div><span>数据状态</span><strong id="quality-status">加载中</strong></div>
+  </section>
+  <p id="coverage-note" class="hint" aria-live="polite">正在核对行情覆盖日期。</p>
+  <section id="job-panel" class="panel job-panel" aria-live="polite" hidden>
+    <div class="section-heading"><h2 id="job-title">正在准备计划</h2><button id="cancel-button" class="button small danger">取消任务</button></div>
+    <p id="job-stage">准备中</p><progress id="job-progress" max="100" value="0"></progress>
+    <ol id="job-steps" class="steps"></ol>
+    <details><summary>查看运行日志</summary><pre id="job-log"></pre></details>
+  </section>
+  <section class="panel plan-panel" aria-labelledby="plan-heading">
+    <div class="section-heading"><div><p class="eyebrow">所选策略的行动清单</p><h2 id="plan-heading">下一交易日计划</h2></div><span id="plan-badge" class="badge">尚未生成</span></div>
+    <p id="plan-dates" class="plan-dates">更新数据并生成计划后，买入、卖出和模型持仓会显示在这里。</p>
+    <div id="plan-warnings" class="notice warning" hidden></div>
+    <div id="plan-meta" class="meta-row" hidden></div>
+    <div class="order-grid">
+      <article><div class="order-heading"><h3>买入</h3><span id="buy-count" class="count">0</span></div><p class="hint">含费预算，实际股数按下一交易日开盘价确定。</p><div id="buy-table" class="table-wrap"><p class="empty">尚未生成买入计划</p></div></article>
+      <article><div class="order-heading"><h3>卖出</h3><span id="sell-count" class="count">0</span></div><p class="hint">模型持仓的待执行请求，未成交不会释放持仓。</p><div id="sell-table" class="table-wrap"><p class="empty">尚未生成卖出计划</p></div></article>
+    </div>
+    <p class="hint">“无买入 / 无卖出”是有效结果；计划不是已成交记录。</p>
+  </section>
+  <section class="panel" aria-labelledby="positions-heading">
+    <div class="section-heading"><h2 id="positions-heading">模型持仓</h2><span id="positions-date" class="hint">随当前计划展示</span></div>
+    <p class="hint">以下是策略模型账户，实盘持仓与成交请独立核对。</p><div id="positions-table" class="table-wrap"><p class="empty">尚未生成持仓快照</p></div>
+  </section>
+  <details class="panel secondary-panel" id="history-panel"><summary>历史计划</summary><div class="history-heading"><p class="hint">查看历史不会改变当前策略账户。</p><button class="button small secondary" id="latest-button">返回最新计划</button></div><div id="history-list"><p class="empty">暂无历史计划</p></div></details>
+  <details class="panel secondary-panel"><summary>数据来源</summary><p class="hint">下面是各来源最新观测日期；事件日期不等同于更新检查日期。</p><div id="source-dates" class="sources"></div></details>
+  <footer>仅使用已收盘行情。周末、节假日顺延至下一交易日；日历未覆盖时，执行日期显示待确认。</footer>
+</main>
+</body>
+</html>

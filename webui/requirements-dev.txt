@@ -1,0 +1,2 @@
+# Maintained tests and lint tools; run pip from the repository root.
+-e .[dev]

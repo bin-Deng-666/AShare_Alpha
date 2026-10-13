@@ -1,0 +1,4 @@
+# Install ONLY in a dedicated legacy TDX environment, without data/web/dev extras.
+# MootDX pins httpx<0.26 and py-mini-racer<0.7.
+-e .
+mootdx==0.11.7

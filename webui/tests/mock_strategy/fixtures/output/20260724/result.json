@@ -1,0 +1,63 @@
+{
+  "asof": "2026-07-24",
+  "exec_date": "2026-07-25",
+  "meta": {
+    "mkt_regime": "risk_off",
+    "universe_n": 1200,
+    "open_long_n": 3,
+    "reduce_n": 1,
+    "avoid_n": 0
+  },
+  "buy": [
+    {
+      "code": "600519",
+      "name": "贵州茅台",
+      "action": "open_long",
+      "signal_score": 0.8521,
+      "sector": "白酒",
+      "momentum": "breakout",
+      "volatility_regime": "low",
+      "liquidity_tier": "L1",
+      "pct_change": 3.25,
+      "reason": "open_long | breakout | mkt=risk_off ind=白酒 (low) | vol=low liq=L1"
+    },
+    {
+      "code": "000858",
+      "name": "五粮液",
+      "action": "open_long",
+      "signal_score": 0.7234,
+      "sector": "白酒",
+      "momentum": "pullback",
+      "volatility_regime": "low",
+      "liquidity_tier": "L1",
+      "pct_change": 1.82,
+      "reason": "open_long | pullback | mkt=risk_off ind=白酒 (low) | vol=low liq=L1"
+    },
+    {
+      "code": "002594",
+      "name": "比亚迪",
+      "action": "open_long",
+      "signal_score": 0.689,
+      "sector": "新能源车",
+      "momentum": "trend",
+      "volatility_regime": "mid",
+      "liquidity_tier": "L2",
+      "pct_change": 2.15,
+      "reason": "open_long | trend | mkt=risk_off ind=新能源车 (mid) | vol=mid liq=L2"
+    }
+  ],
+  "reduce": [
+    {
+      "code": "601318",
+      "name": "中国平安",
+      "action": "reduce",
+      "signal_score": 0.321,
+      "sector": "保险",
+      "momentum": "stall",
+      "volatility_regime": "high",
+      "liquidity_tier": "L1",
+      "pct_change": -0.85,
+      "reason": "reduce | stall | mkt=risk_off ind=保险 (high) | vol=high liq=L1"
+    }
+  ]
+}

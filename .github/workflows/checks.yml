@@ -1,0 +1,70 @@
+name: checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: '3.10'
+          - os: ubuntu-latest
+            python: '3.13'
+          - os: macos-latest
+            python: '3.12'
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python }}
+          enable-cache: true
+      - run: uv sync --frozen --extra dev
+      - run: uv run --frozen --extra dev ruff check .
+      - run: uv run --frozen --extra dev ruff format --check .
+      - run: uv run --frozen --extra dev ashare-alpha check --quiet
+      - run: uv run --frozen --extra dev pytest -q
+      - run: uv run --frozen --extra dev ashare-alpha verify demo
+      - run: uv run --frozen --extra dev ashare-alpha demo --output "$RUNNER_TEMP/ashare-demo"
+      - run: uv build
+      - run: python scripts/check_distribution.py
+      - name: Installed wheel outside checkout
+        shell: bash
+        run: |
+          uv venv "$RUNNER_TEMP/ashare-wheel" --python '${{ matrix.python }}'
+          uv pip install --python "$RUNNER_TEMP/ashare-wheel/bin/python" dist/*.whl
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/ashare-wheel/bin/ashare-alpha" --version
+          "$RUNNER_TEMP/ashare-wheel/bin/ashare-alpha" verify demo
+          "$RUNNER_TEMP/ashare-wheel/bin/ashare-alpha" demo --output "$RUNNER_TEMP/ashare-wheel-demo"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --check webui/static/app.js
+      - run: bash -n 启动策略操作台.command 停止策略操作台.command
+      - run: python scripts/check_architecture.py
+      - run: python scripts/check_publication.py
+      - run: python scripts/check_docs.py
+
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.12'
+      - run: uv sync --frozen --extra dev
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix webui
+      - run: npm exec --prefix webui -- playwright install --with-deps chromium
+      - run: npm test --prefix webui

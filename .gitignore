@@ -1,28 +1,33 @@
-# Local research is deliberately outside the published example
+# Local datasets, experiments, reports and historical archives
+workspace/
 .local_research/
+
+# Publish only the example strategy and its index
 strategy/*
 !strategy/__init__.py
-!strategy/__main__.py
 !strategy/README.md
-!strategy/ARCHITECTURE.md
 !strategy/demo/
-!strategy/research/
-webui/app/strategies/*
-!webui/app/strategies/__init__.py
-!webui/app/strategies/demo/
+src/web/strategies/*
+!src/web/strategies/__init__.py
+!src/web/strategies/demo/
 
-# Python environments, bytecode and tools
+# Python environments and build tools
+.venv*/
 __pycache__/
 *.py[cod]
 *.egg-info/
-.venv*/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
 build/
 dist/
 
-# OS, editor and local assistant workspaces
+# Frontend development dependencies and reports
+node_modules/
+tests/browser/playwright-report/
+tests/browser/test-results/
+
+# OS/editor files and local assistant context
 .DS_Store
 .idea/
 .vscode/
@@ -38,42 +43,10 @@ dist/
 *.p12
 *.pfx
 
-# Installed frontend tools and generated browser reports
-node_modules/
-webui/playwright-report/
-webui/test-results/
-
-# Logs, temporary files and unadopted drafts
-*.log
-*.tmp
-*.bak
-**/*_draft.md
-
-# Runtime tasks and application outputs
-webui/jobs/
-webui/server.json
-webui/server.lock
-cli/output/
-strategy/artifacts/
-strategy/**/output/
-
-# Canonical data assets, catalogs, receipts and current audits
-data/parquet/
-data/warehouse/
-data/catalog/
-data/logs/
-data/state/
-data/raw/
-data/manifest.json
-data/quality_report.json
+# Generated data/model files are never source
+*.parquet
 *.duckdb
 *.duckdb.wal
-*.parquet
-
-# Models, binary arrays and feature caches
-strategy/**/cache/
-strategy/**/model/store/
-strategy/**/runs/
 *.lgb
 *.cbm
 *.pt
@@ -86,17 +59,8 @@ strategy/**/runs/
 *.joblib
 **/catboost_info/
 
-# Reproducible ledgers and local live reports
-strategy/**/reports/**/*.csv
-strategy/rotating/reports/PERFORMANCE.md
-strategy/rotating/reports/PERFORMANCE.json
-strategy/**/versions/**/*equity*.csv
-strategy/**/versions/**/ledger_daily.csv
-strategy/**/versions/**/trades.csv
-strategy/**/versions/**/ablation*.csv
-
-# Archived experiment data; compact accepted Markdown/JSON research summaries stay tracked
-strategy/archive/**/experiments/*.csv
-strategy/archive/**/experiments/results/*.csv
-strategy/archive/**/experiments/results/*.json
-strategy/archive/**/experiments/results/*.txt
+# Logs, temporary files and unadopted drafts
+*.log
+*.tmp
+*.bak
+**/*_draft.md

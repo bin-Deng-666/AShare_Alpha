@@ -11,12 +11,16 @@ from unittest.mock import patch
 
 import pandas as pd
 from ashare_alpha.plans import current_plan, read_index, report_dates
-from cli.utils.sink import write_run_bundle
-from webui.app.core.sessions import closed_session
-from webui.app.core import checkpoint as cp
-from webui.app.core.config_loader import get_strategy, load_strategy, STRATEGIES_DIR
-from webui.app.core.job_manager import JobManager
-from webui.app.core.schema import StageConfig
+from ashare_alpha.cli.utils.sink import write_run_bundle
+from ashare_alpha.web.core.sessions import closed_session
+from ashare_alpha.web.core import checkpoint as cp
+from ashare_alpha.web.core.config_loader import (
+    get_strategy,
+    load_strategy,
+    STRATEGIES_DIR,
+)
+from ashare_alpha.web.core.job_manager import JobManager
+from ashare_alpha.web.core.schema import StageConfig
 
 
 class PlanPublicationTests(unittest.TestCase):
@@ -59,7 +63,7 @@ class PlanPublicationTests(unittest.TestCase):
             write_run_bundle(root / "20240201", old)
             new = self.payload("2024-02-01", "2024-02-02")
             with patch(
-                "cli.utils.sink.build_report_markdown",
+                "ashare_alpha.cli.utils.sink.build_report_markdown",
                 side_effect=OSError("report interrupted"),
             ):
                 with self.assertRaises(OSError):
@@ -156,7 +160,7 @@ class CalendarAndConfigurationTests(unittest.TestCase):
                 load_strategy(path)
 
     def test_generation_requires_a_current_accepted_audit_and_no_writer(self):
-        from webui.app.core.t_full import build_status
+        from ashare_alpha.web.core.t_full import build_status
 
         cfg = get_strategy("demo")
         for quality, audited, writer, allowed in (
@@ -189,19 +193,28 @@ class CalendarAndConfigurationTests(unittest.TestCase):
                 }
                 with (
                     patch(
-                        "webui.app.core.t_full.get_strategy_paths",
+                        "ashare_alpha.web.core.t_full.get_strategy_paths",
                         return_value={
                             "calendar": root / "calendar",
                             "catalog": root / "catalog",
                             "panel": root / "dataset.json",
                         },
                     ),
-                    patch("webui.app.core.t_full.closed_session", return_value=clock),
                     patch(
-                        "webui.app.core.t_full._canonical_status", return_value=state
+                        "ashare_alpha.web.core.t_full.closed_session",
+                        return_value=clock,
                     ),
-                    patch("webui.app.core.t_full._catalog_ok", return_value=False),
-                    patch("webui.app.core.t_full._per_source_dates", return_value={}),
+                    patch(
+                        "ashare_alpha.web.core.t_full._canonical_status",
+                        return_value=state,
+                    ),
+                    patch(
+                        "ashare_alpha.web.core.t_full._catalog_ok", return_value=False
+                    ),
+                    patch(
+                        "ashare_alpha.web.core.t_full._per_source_dates",
+                        return_value={},
+                    ),
                     patch.object(cp, "JOBS_BASE", root / "jobs"),
                 ):
                     self.assertEqual(build_status(cfg)["can_generate"], allowed)
@@ -224,7 +237,7 @@ class StorageContractTests(unittest.TestCase):
         import json
         from datetime import date
         from ashare_alpha.storage import atomic_json
-        from data.ashare_data.storage import atomic_json as data_json
+        from ashare_alpha.data.storage import atomic_json as data_json
 
         with TemporaryDirectory() as directory:
             path = Path(directory) / "state.json"
@@ -254,7 +267,7 @@ class StorageContractTests(unittest.TestCase):
 
     def test_data_writer_retains_pid_and_excludes_application_lock(self):
         from ashare_alpha.storage import publication_lock
-        from data.ashare_data.storage import writer_lock
+        from ashare_alpha.data.storage import writer_lock
 
         with TemporaryDirectory() as directory:
             path = Path(directory) / "writer.lock"
@@ -274,7 +287,7 @@ class ShutdownTests(unittest.IsolatedAsyncioTestCase):
         with (
             TemporaryDirectory() as directory,
             patch.object(cp, "JOBS_BASE", Path(directory) / "jobs"),
-            patch("webui.app.core.t_full._t_full", return_value=None),
+            patch("ashare_alpha.web.core.t_full._t_full", return_value=None),
         ):
             root = Path(directory)
             marker = root / "ready"
@@ -314,7 +327,7 @@ class ShutdownTests(unittest.IsolatedAsyncioTestCase):
         with (
             TemporaryDirectory() as directory,
             patch.object(cp, "JOBS_BASE", Path(directory) / "jobs"),
-            patch("webui.app.core.t_full._t_full", return_value=None),
+            patch("ashare_alpha.web.core.t_full._t_full", return_value=None),
         ):
             manager = JobManager()
             cfg = get_strategy("demo")

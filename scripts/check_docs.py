@@ -8,10 +8,15 @@ from urllib.parse import unquote
 ROOT = Path(__file__).resolve().parents[1]
 errors = []
 checked = 0
-paths = subprocess.check_output(
-    ["git", "ls-files", "*.md"], cwd=ROOT, text=True
-).splitlines()
-for name in paths:
+paths = (
+    subprocess.check_output(
+        ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z", "*.md"],
+        cwd=ROOT,
+    )
+    .decode()
+    .split("\0")
+)
+for name in filter(None, paths):
     path = ROOT / name
     if not path.exists():
         continue

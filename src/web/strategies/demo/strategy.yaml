@@ -1,0 +1,53 @@
+strategy_id: demo
+display_name: Buy & Hold · 单标的持有
+version: demo-v1
+repo_root: strategy/demo
+panel_path: artifacts/strategies/demo/dataset.json
+catalog_path: data/catalog/quant.duckdb
+calendar_source: data/parquet/reference/trade_calendar.parquet
+ledger_source: artifacts/strategies/demo/plan.json
+output_dir: artifacts/strategies/demo/plans
+daily_plan_command: ["{python}", "-m", ashare_alpha.cli.run, demo]
+daily_plan_cwd: .
+daily_plan_timeout: 600
+daily_asof_argument: --date
+aux_sources:
+  - {id: bars, display_name: 行情, table: stock_daily_raw, date_column: date}
+market_status_fields:
+  - {key: code, label: 标的}
+  - {key: n_positions, label: 持仓数}
+plan_columns:
+  buy:
+    - {key: code, label: 代码}
+    - {key: budget, label: 含费预算}
+    - {key: status, label: 状态}
+    - {key: reason, label: 理由}
+  sell:
+    - {key: code, label: 代码}
+    - {key: quantity, label: 请求股数}
+positions_columns:
+  - {key: code, label: 代码}
+  - {key: shares, label: 模型股数}
+  - {key: avg_cost, label: 账本单位成本}
+  - {key: current_price, label: 收盘价}
+  - {key: pnl_pct, label: 浮盈%}
+  - {key: hold_days, label: 持有自然日}
+update_pipeline:
+  - id: trading_calendar
+    label: 确认交易日历
+    source_desc: 获取已公布的后续交易日安排
+    command: ["{python}", "-m", ashare_alpha, data, update, "--tasks", calendar, "--target", "{calendar_through}"]
+    cwd: .
+    timeout: 120
+  - id: daily_update
+    label: 更新市场数据
+    source_desc: 更新至最新已收盘交易日并核验
+    command: ["{python}", "-m", ashare_alpha.cli.daily_update, "--data-only", "--target", "{target_date}"]
+    cwd: .
+    timeout: 7200
+post_update_checks:
+  - id: strategy_contracts
+    label: 示例契约验证
+    command: ["{python}", "-m", ashare_alpha, verify, demo]
+    cwd: .
+    timeout: 120

@@ -3,9 +3,9 @@
 import json
 from pathlib import Path
 import pandas as pd
-from backtest import MarketData
-from backtest.results import json_value
-from strategy.research.runner import run, execution_config
+from ashare_alpha.backtest import MarketData
+from ashare_alpha.backtest.results import json_value
+from ashare_alpha.research.runner import run, execution_config
 from .build import build, latest_observed, STRATEGY_ID
 from .params import Params
 from .strategy import BuyAndHoldStrategy

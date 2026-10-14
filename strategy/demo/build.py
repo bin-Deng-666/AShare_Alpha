@@ -2,10 +2,10 @@
 
 from pathlib import Path
 import pandas as pd
-from backtest import MarketData
-from data.ashare_data.paths import CATALOG_PATH
-from data.ashare_data.pipeline.status import read_status
-from strategy.research.artifacts import ROOT, identity, write_json
+from ashare_alpha.backtest import MarketData
+from ashare_alpha.data.paths import CATALOG_PATH
+from ashare_alpha.data.pipeline.status import read_status
+from ashare_alpha.research.artifacts import ROOT, identity, write_json
 from .params import Params
 
 STRATEGY_ID = "demo"

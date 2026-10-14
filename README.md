@@ -1,73 +1,80 @@
 # AShare Alpha
 
-A 股数据拉取、审计、通用回测与本地交易计划操作台。公开仓库只包含框架代码和一个 **单标的买入并持续持有** 的 demo。行情文件、模型、缓存、运行结果和其他研究策略保留本地。
+A 股数据拉取与审计、日频回测和本地交易计划操作台。公开版本提供通用框架，以及一个**单标的买入并持有**示例。
 
 ## 快速开始
 
-支持 macOS/Linux、Python 3.10–3.13。发布分支使用干净历史，克隆时选择该分支：
+支持 macOS / Linux、Python 3.10–3.13。
 
 ```bash
 git clone --single-branch --branch main https://github.com/bin-Deng-666/AShare_Alpha.git
 cd AShare_Alpha
 uv sync --frozen --extra dev
-uv run --frozen --extra dev ashare-alpha demo --output /tmp/ashare-demo
-uv run --frozen --extra dev ashare-alpha check --quiet
+uv run ashare-alpha demo --output /tmp/ashare-demo
+uv run ashare-alpha check --quiet
 ```
 
-离线演示用代码生成合成行情：只买入 `000001`，随后一直持有，输出账户曲线、成交记录和可重放输入。它不下载真实数据，也不包含择时、止损、选股因子或模型训练。
+离线 demo 使用合成行情，买入 `000001` 后持续持有，输出账户曲线、成交记录和可重放输入，无需先下载行情。
 
-## 拉取真实数据
+## 项目结构
 
-数据代码保留获取、规范化、更新恢复、公司行为和质量检查能力，真实数据在本地生成：
+```text
+AShare_Alpha/
+├── src/                 # 框架源码，安装后导入为 ashare_alpha
+│   ├── data/            # 数据获取、派生、审计与查询
+│   ├── backtest/        # 撮合、账户、权益处理与绩效
+│   ├── cli/             # 命令行入口
+│   ├── web/             # 本地 API、页面与策略展示适配
+│   └── research/        # 通用输入身份和结果发布工具
+├── strategy/            # 具体策略；公开版本只包含 demo
+├── tests/               # Python 回归与 browser/ 浏览器测试
+├── docs/                # 使用说明、数据契约和架构决策
+├── scripts/             # 质量检查、benchmarks/、mac/、legacy/
+└── workspace/           # 本地生成：data/、artifacts/、jobs/、cache/
+```
+
+`src/` 通过打包配置映射为 Python 包 `ashare_alpha`，文件树无需再套同名目录。依赖统一由 `pyproject.toml` 与 `uv.lock` 管理；按需安装可用 `pip install -e '.[data,web]'`。
+
+`workspace/` 和本地研究目录由 Git 忽略，安装包只收录明确声明的公共模块和 demo。目录变化与旧入口的替代方式见[迁移说明](docs/adr/003-source-layout.md)。
+
+## 数据与操作台
 
 ```bash
-uv run --frozen --extra dev ashare-alpha data inspect
-uv run --frozen --extra dev ashare-alpha data plan
-uv run --frozen --extra dev ashare-alpha data update
-uv run --frozen --extra dev ashare-alpha data accept
+uv run ashare-alpha data inspect
+uv run ashare-alpha data plan
+uv run ashare-alpha data update
+uv run ashare-alpha data accept
+uv run ashare-alpha web
 ```
 
-`ASHARE_WORKSPACE` 可把行情、审计、模型账户和日志放到独立目录：
+浏览器打开 `http://127.0.0.1:8787`：选择策略，更新到最新已收盘交易日，查看下一交易日计划与对应的模型持仓。生成失败时保留上一份完整计划。
+
+默认数据写入 `workspace/data/`。用环境变量切换工作区：
 
 ```bash
 export ASHARE_WORKSPACE="$HOME/ashare-workspace"
-uv run --frozen --extra dev ashare-alpha web
+uv run ashare-alpha web
 ```
 
-操作台位于 `http://127.0.0.1:8787`：更新至最新已收盘交易日，再查看 demo 的下一交易日请求及当前模型持仓。确认买入后，后续正常计划显示持续持有和无卖出。
+策略输入与结果位于工作区的 `artifacts/strategies/`，任务状态位于 `jobs/`。macOS 双击入口在 `scripts/mac/`。
 
-## 单标的 demo
+## 单标的策略示例
 
 ```bash
-uv run --frozen --extra dev ashare-alpha strategy backtest demo \
+uv run ashare-alpha strategy backtest demo \
   --start 2024-01-02 --end 2024-01-31 --save-inputs --output /tmp/hold-run
-uv run --frozen --extra dev ashare-alpha plan demo --panel /tmp/hold-run/inputs
+uv run ashare-alpha plan demo --panel /tmp/hold-run/inputs
 ```
 
-默认标的 `000001` 仅为接口示例；更换标的可传 `--params` JSON，如 `{"code":"600000"}`。每次运行只持有一个标的，详见 [demo](strategy/demo/README.md)。成交与账户由公共引擎处理，模型账户需与实盘独立核对。
+默认代码 `000001` 仅为示例，可用 `--params` JSON 更换。每次账户只买入一个标的；没有选股、择时或模型训练，详见 [demo](strategy/demo/README.md)。计划默认保存 `result.json` 与 `report.md`，需要交易和持仓 CSV 时加 `--csv`。
 
-默认日计划发布 `result.json` 和 `report.md`。需要买入、卖出及持仓 CSV 时加 `--csv`，导出随同一份计划原子提交。
+## 文档与开发
 
-## 结构与安装
+- [数据使用](docs/data/README.md)、[字段与可得日契约](docs/data/DATA_CONTRACTS.md)
+- [回测接口](docs/backtest/README.md)、[账户与撮合架构](docs/backtest/ARCHITECTURE.md)
+- [策略目录](strategy/README.md)、[操作台](docs/web.md)
+- [贡献与验证](.github/CONTRIBUTING.md)、[变更记录](docs/CHANGELOG.md)、[安全报告](.github/SECURITY.md)
 
-| 位置 | 职责 |
-|---|---|
-| `data/ashare_data/` | 数据拉取、派生、审计与查询 |
-| `backtest/` | 通用时钟、撮合、账户与结果 |
-| `strategy/demo/` | 唯一公开策略：单标的买入并持有 |
-| `strategy/research/` | 运行发布、执行配置与内容身份工具 |
-| `ashare_alpha/` | 命令入口、工作区、策略注册与原子计划发布 |
-| `webui/` | 本地 API 与操作台 |
+MootDX 的旧依赖单独保存在 `scripts/legacy/requirements-tdx.txt`，仅供独立旧版数据工具环境使用。
 
-依赖在 `pyproject.toml` 定义并由 `uv.lock` 固定。只安装应用可用 `pip install -e '.[data,web]'`；开发组 `dev` 包含测试、数据和 WebUI 依赖。MootDX 的旧依赖仅在独立 legacy 数据工具环境安装。已有 `python -m data/backtest/strategy/cli.run/webui.server` 入口保持可调用。
-
-数据、模型、其他研究策略及工作区产物由 [.gitignore](.gitignore) 排除。测试数据使用合成 fixture，目录允许规则只发布 demo 及通用工具。公开安装包不包含本机行情和研究策略。
-
-## 文档
-
-- [数据使用](data/README.md)、[字段与可得日契约](data/docs/DATA_CONTRACTS.md)
-- [回测接口](backtest/README.md)、[回测架构](backtest/ARCHITECTURE.md)
-- [策略示例](strategy/demo/README.md)、[WebUI 使用](webui/docs/README.md)
-- [贡献与验证](CONTRIBUTING.md)、[变更记录](CHANGELOG.md)、[安全报告](SECURITY.md)
-
-代码使用 [MIT License](LICENSE)。数据遵循供应商条款，当前修订快照不声明为完整历史 PIT 数据。支持日频多头现金模型，成交与结算假设见回测文档。
+代码采用 [MIT License](LICENSE)。数据遵循供应商条款；当前修订快照不等于完整历史 PIT 数据。模型账户与实际交易账户应独立核对，执行与结算假设见回测文档。

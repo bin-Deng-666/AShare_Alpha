@@ -1,0 +1,18 @@
+# An opt-in test registration; reports use the production presentation contract.
+strategy_id: mock_alpha
+display_name: Fixture strategy
+version: test-v1
+repo_root: strategy/demo
+panel_path: artifacts/strategies/mock_alpha/dataset.json
+catalog_path: data/catalog/quant.duckdb
+calendar_source: data/parquet/reference/trade_calendar.parquet
+ledger_source: artifacts/strategies/mock_alpha/plan.json
+output_dir: artifacts/strategies/mock_alpha/plans
+daily_plan_command: ["{python}", "-c", "print('fixture')"]
+plan_columns:
+  buy:
+    - {key: code, label: Test code}
+    - {key: budget, label: Test budget}
+positions_columns:
+  - {key: code, label: Test code}
+  - {key: shares, label: Test shares}

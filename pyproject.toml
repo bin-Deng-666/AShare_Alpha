@@ -31,32 +31,40 @@ dev = ["ashare-alpha[web,data]", "pytest>=8,<10", "httpx>=0.27,<1", "ruff>=0.14,
 
 [project.scripts]
 ashare-alpha = "ashare_alpha.__main__:main"
-ashare-data = "data.__main__:main"
-ashare-plan = "cli.run:main"
-ashare-web = "webui.server:main"
+ashare-data = "ashare_alpha.data.__main__:main"
+ashare-plan = "ashare_alpha.cli.run:main"
+ashare-web = "ashare_alpha.web.server:main"
 
 [project.urls]
 Repository = "https://github.com/bin-Deng-666/AShare_Alpha"
 Issues = "https://github.com/bin-Deng-666/AShare_Alpha/issues"
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["ashare_alpha*", "backtest*", "cli*", "data*", "strategy", "strategy.demo*", "strategy.research*", "webui", "webui.app", "webui.app.api", "webui.app.core", "webui.app.strategies", "webui.app.strategies.demo"]
-exclude = ["*.tests*", "data.parquet*", "data.state*", "data.catalog*", "webui.jobs*"]
-namespaces = false
+[tool.setuptools]
+package-dir = {ashare_alpha = "src", strategy = "strategy"}
+packages = [
+  "ashare_alpha", "ashare_alpha.backtest", "ashare_alpha.cli",
+  "ashare_alpha.cli.utils", "ashare_alpha.cli.utils.adapters",
+  "ashare_alpha.data", "ashare_alpha.data.assets", "ashare_alpha.data.pipeline",
+  "ashare_alpha.data.research", "ashare_alpha.data.rules", "ashare_alpha.data.sources",
+  "ashare_alpha.research", "ashare_alpha.web", "ashare_alpha.web.api",
+  "ashare_alpha.web.core", "ashare_alpha.web.strategies", "ashare_alpha.web.strategies.demo",
+  "strategy", "strategy.demo",
+]
 
 [tool.setuptools.package-data]
-data = ["config/*.json"]
+"ashare_alpha.data" = ["config/*.json"]
 "strategy.demo" = ["presets/*.json"]
-webui = ["static/*.html", "static/*.css", "static/*.js", "app/strategies/demo/strategy.yaml"]
+"ashare_alpha.web" = ["static/*.html", "static/*.css", "static/*.js", "strategies/demo/strategy.yaml"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests", "backtest/tests", "data/tests", "strategy/demo/tests", "webui/tests"]
+testpaths = ["tests"]
+cache_dir = "workspace/cache/pytest"
 addopts = "-ra"
 
 [tool.ruff]
 target-version = "py310"
-include = ["ashare_alpha/**/*.py", "tests/**/*.py", "scripts/**/*.py", "webui/**/*.py", "cli/**/*.py", "strategy/demo/**/*.py", "strategy/research/**/*.py"]
+cache-dir = "workspace/cache/ruff"
+include = ["src/**/*.py", "tests/**/*.py", "scripts/**/*.py", "strategy/demo/**/*.py"]
 
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F"]

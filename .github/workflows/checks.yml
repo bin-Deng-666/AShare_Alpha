@@ -48,8 +48,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --check webui/static/app.js
-      - run: bash -n 启动策略操作台.command 停止策略操作台.command
+      - run: node --check src/web/static/app.js
+      - run: bash -n scripts/mac/*.command
       - run: python scripts/check_architecture.py
       - run: python scripts/check_publication.py
       - run: python scripts/check_docs.py
@@ -65,6 +65,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm ci --prefix webui
-      - run: npm exec --prefix webui -- playwright install --with-deps chromium
-      - run: npm test --prefix webui
+      - run: npm ci --prefix tests/browser
+      - run: npm exec --prefix tests/browser -- playwright install --with-deps chromium
+      - run: npm test --prefix tests/browser

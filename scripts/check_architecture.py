@@ -1,4 +1,4 @@
-"""Check declared dependency directions without importing optional providers."""
+"""Check dependency directions in the application package without importing it."""
 
 import ast
 from pathlib import Path
@@ -6,12 +6,25 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 errors = []
 for directory, forbidden in (
-    ("data/ashare_data", {"strategy", "cli", "webui"}),
-    ("backtest", {"strategy", "cli", "webui"}),
+    (
+        "src/data",
+        {
+            "strategy",
+            "ashare_alpha.backtest",
+            "ashare_alpha.cli",
+            "ashare_alpha.web",
+            "ashare_alpha.research",
+        },
+    ),
+    (
+        "src/backtest",
+        {"strategy", "ashare_alpha.cli", "ashare_alpha.web", "ashare_alpha.research"},
+    ),
 ):
-    for path in (ROOT / directory).rglob("*.py"):
-        if "tests" in path.parts:
-            continue
+    base = ROOT / directory
+    if not base.is_dir():
+        raise SystemExit(f"Missing source directory: {directory}")
+    for path in base.rglob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             names = (
@@ -22,7 +35,10 @@ for directory, forbidden in (
                 else []
             )
             for name in names:
-                if name.split(".")[0] in forbidden:
+                if any(
+                    name == prefix or name.startswith(prefix + ".")
+                    for prefix in forbidden
+                ):
                     errors.append(
                         f"{path.relative_to(ROOT)}:{node.lineno}: forbidden dependency {name}"
                     )

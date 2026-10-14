@@ -1,7 +1,13 @@
 """Buy one selected security and hold it; the shared engine owns the account."""
 
 from pathlib import Path
-from backtest import Strategy, DataRequirements, OrderBatch, OrderRequest, Side
+from ashare_alpha.backtest import (
+    Strategy,
+    DataRequirements,
+    OrderBatch,
+    OrderRequest,
+    Side,
+)
 from .params import Params
 
 

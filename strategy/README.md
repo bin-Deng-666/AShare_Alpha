@@ -1,9 +1,9 @@
-# 策略示例
+# 具体策略
 
-公开仓库只注册 [单标的买入并持有 demo](demo/README.md)。其他研究策略、模型和历史实验留在本地，不进入 Git 或安装包。
+每个子目录代表一个策略，包含自身的参数、信号、构建与运行入口。公开版本仅包含 [demo](demo/README.md)：单标的买入后持续持有。
 
-策略类通过 `backtest.Strategy` 返回订单，由公共引擎维护成交、费用、账户和公司行为。demo 买入指定标的后持续持有，不做选股、择时、止损或换仓。
+通用执行配置、内容身份与结果发布在 `src/research/`，撮合和账户在 `src/backtest/`，不与具体策略并列。策略通过 `ashare_alpha.backtest.Strategy` 接口提交目标或订单，不能自行改写现金、成交和权益。
 
-`research/` 提供通用内容身份、执行配置和标准运行发布工具。canonical 输入统一通过 `MarketData.from_catalog()` 读取，不维护另一套研究加载器。`ASHARE_WORKSPACE` 下的 `strategy/artifacts/` 保存本地产物。
+本地研究策略可以放在同层独立目录，并自带 `tests/` 和必要的维护脚本；它们默认被 Git 与安装包排除，不会自动注册到公开 CLI 或 WebUI。历史策略归档位于本地 `.local_research/archive/`。
 
-新策略可以遵循 [回测接口](../backtest/README.md)，公开示例和能力在 `ashare_alpha/strategies.py` 唯一声明。默认发布范围仍限制为 demo；添加私人研究目录不会自动注册到 CLI/WebUI。
+运行产物写入工作区的 `artifacts/strategies/`，行情和任务状态分别位于 `data/`、`jobs/`。更多说明见[策略架构](../docs/strategy.md)和[回测接口](../docs/backtest/README.md)。

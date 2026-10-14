@@ -73,10 +73,3 @@ def parse_daily_latest(cfg):
     detail = parse_history_detail(cfg, selected["date"])
     detail["t_full"] = detail["result"]["asof"]
     return detail
-
-
-def parse_monitor(cfg):
-    return {
-        "golden": {"status": "unknown"},
-        "note": "单标的持续持有示例，不提供策略收益承诺。",
-    }

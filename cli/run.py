@@ -43,6 +43,11 @@ def main(argv: list[str] | None = None) -> int:
         help="initial capital for model replay (default: configured execution capital)",
     )
     ap.add_argument("--list", action="store_true", help="list registered strategies")
+    ap.add_argument(
+        "--csv",
+        action="store_true",
+        help="export buy, sell and positions CSV with the plan",
+    )
     ap.add_argument("--json", action="store_true", help="print full JSON result")
     args = ap.parse_args(argv)
 
@@ -66,6 +71,7 @@ def main(argv: list[str] | None = None) -> int:
         rebuild=args.rebuild,
         panel=args.panel,
         capital=args.capital,
+        csv=args.csv,
     )
     if args.json:
         printable = {k: v for k, v in out.items() if k != "paths"}

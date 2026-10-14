@@ -2,7 +2,7 @@
 
 from pathlib import Path
 import inspect
-from .registry import get_predictor, list_registered
+from ashare_alpha.strategies import STRATEGIES
 from .sink import write_run_bundle
 
 from ashare_alpha.paths import CODE_ROOT, WORKSPACE_ROOT
@@ -12,11 +12,26 @@ OUTPUT_DIR = WORKSPACE_ROOT / "cli/output"
 
 
 def list_strategies():
-    return list_registered()
+    return sorted(STRATEGIES)
+
+
+def get_predictor(name):
+    if name not in STRATEGIES:
+        raise KeyError(
+            f"Unknown strategy {name!r}; known: {', '.join(list_strategies())}"
+        )
+    return STRATEGIES[name].load_predictor()
 
 
 def predict_next(
-    strategy, asof=None, *, rebuild=False, panel=None, write=True, capital=None
+    strategy,
+    asof=None,
+    *,
+    rebuild=False,
+    panel=None,
+    write=True,
+    capital=None,
+    csv=False,
 ):
     fn = get_predictor(strategy)
     kwargs = {"asof": asof, "rebuild": rebuild, "panel": panel}
@@ -41,13 +56,12 @@ def predict_next(
             "source": "strategy_class_model_account",
             "buy": result.get("buy", []),
             "sell": result.get("reduce", []),
-            "satellite": [],
         }
     output_root = Path(result.pop("output_root", OUTPUT_DIR / strategy))
     if write:
         directory_date = result["exec_date"] or result["asof"]
         paths = write_run_bundle(
-            output_root / str(directory_date).replace("-", ""), result
+            output_root / str(directory_date).replace("-", ""), result, csv=csv
         )
         result["paths"] = {key: str(value) for key, value in paths.items()}
     else:

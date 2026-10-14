@@ -26,14 +26,6 @@ def _checkpoint_file(strategy_id: str) -> Path:
     return _strategy_jobs_dir(strategy_id) / "update_checkpoint.json"
 
 
-def _last_success_file(strategy_id: str) -> Path:
-    return _strategy_jobs_dir(strategy_id) / "last_successful_update.json"
-
-
-def _golden_status_file(strategy_id: str) -> Path:
-    return _strategy_jobs_dir(strategy_id) / "golden_status.json"
-
-
 # ════════════════════════════════════════════════════════════════
 #  Checkpoint (update resume)
 # ════════════════════════════════════════════════════════════════
@@ -98,44 +90,6 @@ def has_incomplete_update(strategy_id: str) -> bool:
 
 
 # ════════════════════════════════════════════════════════════════
-#  Last successful update (T_full advancement)
-# ════════════════════════════════════════════════════════════════
-
-
-def write_last_success(strategy_id: str, t_full: str | None):
-    data = {
-        "t_full": t_full,
-        "completed_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-    }
-    atomic_json(_last_success_file(strategy_id), data)
-
-
-# ════════════════════════════════════════════════════════════════
-#  Golden status cache
-# ════════════════════════════════════════════════════════════════
-
-
-def get_golden_status(strategy_id: str) -> dict:
-    f = _golden_status_file(strategy_id)
-    if f.exists():
-        try:
-            return json.loads(f.read_text())
-        except Exception:
-            pass
-    return {"status": "unknown", "last_check": None, "summary": "未检查"}
-
-
-def save_golden_status(strategy_id: str, status: str, summary: str, output: str = ""):
-    data = {
-        "status": status,
-        "last_check": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "summary": summary,
-        "output": output[-500:] if output else "",
-    }
-    atomic_json(_golden_status_file(strategy_id), data)
-
-
-# ════════════════════════════════════════════════════════════════
 #  Job persistence (jsonl)
 # ════════════════════════════════════════════════════════════════
 
@@ -164,13 +118,13 @@ def persist_job(strategy_id: str, job: dict):
             "error": job.get("error"),
         }
     )
-    from data.ashare_data.storage import atomic_bytes
+    from ashare_alpha.storage import atomic_bytes
 
     atomic_bytes(
+        f,
         "".join(
             json.dumps(record, ensure_ascii=False) + "\n" for record in records
         ).encode(),
-        f,
     )
 
 

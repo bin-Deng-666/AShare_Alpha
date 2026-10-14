@@ -7,24 +7,19 @@ import os
 from pathlib import Path
 import tempfile
 from typing import Any
+from ashare_alpha.storage import (
+    atomic_bytes as _atomic_bytes,
+    atomic_json as _atomic_json,
+    publication_lock,
+)
 
 
 def atomic_bytes(data: bytes, path: Path) -> None:
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
-    try:
-        with os.fdopen(fd, 'wb') as stream:
-            stream.write(data)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(name, path)
-    finally:
-        Path(name).unlink(missing_ok=True)
+    _atomic_bytes(path, data)
 
 
 def atomic_json(data: Any, path: Path) -> None:
-    atomic_bytes(json.dumps(data, ensure_ascii=False, indent=2, default=str).encode(), path)
+    _atomic_json(path, data, default=str, allow_nan=True)
 
 
 def read_json(path: Path, default: Any = None) -> Any:
@@ -59,18 +54,9 @@ def atomic_parquet(frame: Any, path: Path) -> bool:
 @contextmanager
 def writer_lock(path: Path):
     """Nonblocking OS lock; released even when the process is killed (macOS/Linux)."""
-    import fcntl
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open('a+') as stream:
-        try:
-            fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError as exc:
-            raise RuntimeError('另一个数据更新进程正在运行') from exc
-        try:
-            stream.seek(0)
-            stream.truncate()
-            stream.write(str(os.getpid()))
-            stream.flush()
-            yield
-        finally:
-            fcntl.flock(stream, fcntl.LOCK_UN)
+    with publication_lock(path, message='另一个数据更新进程正在运行') as stream:
+        stream.seek(0)
+        stream.truncate()
+        stream.write(str(os.getpid()))
+        stream.flush()
+        yield

@@ -20,7 +20,7 @@ ashare-alpha strategy backtest demo --start 2024-01-02 --end 2024-01-31 \
 ashare-alpha plan demo --panel /tmp/hold-run/inputs
 ```
 
-可通过 `--params <json文件>` 选择另一个单一标的。日计划在已成交持仓下正常返回无买入、无卖出，并显示真实模型股数。
+可通过 `--params <json文件>` 选择另一个单一标的。日计划在已成交持仓下正常返回无买入、无卖出，并显示真实模型股数。默认发布完整 `result.json` 和 `report.md`；加 `--csv` 可同时导出买入、卖出和持仓表。
 
 示例为教学用模型账户。公司行为默认使用明确的除权日到账代理政策，不能代表完整实盘结算；发生不支持的权益时公共引擎失败并保留诊断。质量 review 与未知执行日持续可见。
 

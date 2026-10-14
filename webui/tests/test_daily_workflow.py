@@ -13,7 +13,7 @@ import pandas as pd
 
 from webui.app.core.sessions import market_clock, closed_session
 from webui.app.core.config_loader import get_strategy, _discover, list_strategies
-from webui.app.core.schema import StageConfig, CheckConfig
+from webui.app.core.schema import StageConfig
 from webui.app.core.job_manager import JobManager
 from webui.app.core import checkpoint as cp
 
@@ -153,7 +153,9 @@ class WorkflowTests(unittest.IsolatedAsyncioTestCase):
                 )
             ],
             post_update_checks=[
-                CheckConfig("check", "策略核验", [sys.executable, "-c", check], ".", 20)
+                StageConfig(
+                    "check", "策略核验", "", [sys.executable, "-c", check], ".", 20
+                )
             ],
             daily_plan_command=[sys.executable, "-c", daily],
             daily_asof_argument="--date",
@@ -201,6 +203,51 @@ class WorkflowTests(unittest.IsolatedAsyncioTestCase):
             {s["name"]: s["status"] for s in checkpoint["steps"]}["daily_plan"],
             "pending",
         )
+
+    async def test_failed_verification_never_runs_plan(self):
+        cfg = self.config()
+        cfg.post_update_checks = [
+            StageConfig(
+                "check",
+                "策略核验",
+                "",
+                [sys.executable, "-c", "import sys; sys.exit(2)"],
+                ".",
+                20,
+            )
+        ]
+        await self.manager.start_update(cfg, generate_plan=True)
+        await asyncio.wait_for(self.manager._task, timeout=10)
+        self.assertEqual(self.manager.get_state()["status"], "failed")
+        self.assertEqual((self.root / "steps").read_text(), "update\n")
+        self.assertEqual(
+            self.manager.get_state()["steps_status"]["daily_plan"], "pending"
+        )
+
+    async def test_reusing_data_still_runs_verification_before_plan(self):
+        (self.root / "steps").write_text("update\n")
+        with patch.object(self.manager, "_signal_date", return_value="2026-10-12"):
+            await self.manager.start_daily(self.config())
+            await asyncio.wait_for(self.manager._task, timeout=10)
+        self.assertEqual((self.root / "steps").read_text(), "update\ncheck\nplan\n")
+        self.assertEqual(self.manager.get_state()["status"], "done")
+        self.assertEqual(self.manager.get_state()["completed_steps"], 2)
+
+    async def test_retry_rechecks_verification_after_same_day_data_update(self):
+        cp.write_checkpoint(
+            "demo",
+            "earlier",
+            {"data": "completed", "check": "completed", "daily_plan": "failed"},
+            "2026-10-12",
+            target_date="2026-10-12",
+        )
+        with patch.object(self.manager, "_signal_date", return_value="2026-10-12"):
+            await self.manager.start_update(
+                self.config(), resume=True, generate_plan=True
+            )
+            await asyncio.wait_for(self.manager._task, timeout=10)
+        self.assertEqual((self.root / "steps").read_text(), "update\ncheck\nplan\n")
+        self.assertEqual(self.manager.get_state()["status"], "done")
 
     async def test_stale_checkpoint_rechecks_market_data(self):
         cp.write_checkpoint(

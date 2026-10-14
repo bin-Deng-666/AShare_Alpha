@@ -134,7 +134,6 @@ def daily(
                 "capital": plan["portfolio"]["equity"],
                 "buy": buys,
                 "sell": [],
-                "satellite": [],
             },
             "note": "买入一个标的后持续持有的模型账户示例；没有择时、止损或换仓。",
         }

@@ -4,7 +4,6 @@ version: demo-v1
 repo_root: strategy/demo
 panel_path: ../artifacts/demo/dataset.json
 catalog_path: data/catalog/quant.duckdb
-t_full_source: data/quality_report.json
 calendar_source: data/parquet/reference/trade_calendar.parquet
 ledger_source: ../artifacts/demo/plan.json
 output_dir: strategy/artifacts/demo/plans

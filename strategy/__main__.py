@@ -21,6 +21,8 @@ def main(argv=None):
         if name in ("backtest", "daily"):
             command.add_argument("--snapshot", type=Path)
             command.add_argument("--capital", type=float)
+        if name == "daily":
+            command.add_argument("--csv", action="store_true", help="export optional plan CSV files")
         if name == "backtest":
             command.add_argument("--config", type=Path)
             command.add_argument("--output", type=Path)
@@ -84,7 +86,7 @@ def main(argv=None):
         from strategy.research.artifacts import ROOT
         from cli.utils.sink import write_run_bundle
         date = str(result["exec_date"] or result["asof"]).replace("-", "")
-        write_run_bundle(ROOT / args.strategy / "plans" / date, result)
+        write_run_bundle(ROOT / args.strategy / "plans" / date, result, csv=args.csv)
         print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 

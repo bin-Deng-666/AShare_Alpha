@@ -17,7 +17,6 @@ import yaml
 
 from webui.app.core.schema import (
     AuxSource,
-    CheckConfig,
     ColumnDef,
     MarketStatusField,
     StageConfig,
@@ -34,7 +33,6 @@ def _parse_column(col: dict[str, Any]) -> ColumnDef:
     return ColumnDef(
         key=col["key"],
         label=col.get("label", col["key"]),
-        width=col.get("width", ""),
     )
 
 
@@ -59,20 +57,9 @@ def _parse_stage(s: dict[str, Any]) -> StageConfig:
         id=s["id"],
         label=s.get("label", s["id"]),
         source_desc=s.get("source_desc", ""),
-        command=s["command"] if isinstance(s["command"], list) else [s["command"]],
+        command=s["command"],
         cwd=s.get("cwd", "."),
         timeout=s.get("timeout", 1800),
-    )
-
-
-def _parse_check(c: dict[str, Any]) -> CheckConfig:
-    return CheckConfig(
-        id=c["id"],
-        label=c.get("label", c["id"]),
-        command=c["command"] if isinstance(c["command"], list) else [c["command"]],
-        cwd=c.get("cwd", "."),
-        timeout=c.get("timeout", 120),
-        updates_golden=c.get("updates_golden", False),
     )
 
 
@@ -90,7 +77,6 @@ def load_strategy(yaml_path: Path) -> StrategyConfig:
         "repo_root",
         "panel_path",
         "catalog_path",
-        "t_full_source",
         "calendar_source",
         "ledger_source",
         "output_dir",
@@ -122,14 +108,10 @@ def load_strategy(yaml_path: Path) -> StrategyConfig:
         version=raw.get("version", "v1.0"),
         repo_root=raw["repo_root"],
         panel_path=raw["panel_path"],
-        panel_hash_expected=raw.get("panel_hash_expected", ""),
         catalog_path=raw["catalog_path"],
-        t_full_source=raw["t_full_source"],
         calendar_source=raw["calendar_source"],
         ledger_source=raw["ledger_source"],
         output_dir=raw["output_dir"],
-        golden_meta_path=raw.get("golden_meta_path", "golden/META.json"),
-        factor_health_dir=raw.get("factor_health_dir", "reports"),
         daily_plan_command=raw["daily_plan_command"],
         daily_plan_cwd=raw.get("daily_plan_cwd", "."),
         daily_asof_argument=raw.get("daily_asof_argument", ""),
@@ -145,11 +127,8 @@ def load_strategy(yaml_path: Path) -> StrategyConfig:
             _parse_column(c) for c in raw.get("plan_columns", {}).get("sell", [])
         ],
         positions_columns=[_parse_column(c) for c in raw.get("positions_columns", [])],
-        sell_reasons=raw.get("sell_reasons", []),
         update_pipeline=[_parse_stage(s) for s in raw.get("update_pipeline", [])],
-        post_update_checks=[_parse_check(c) for c in raw.get("post_update_checks", [])],
-        take_profit=raw.get("take_profit", 0.15),
-        stop_loss=raw.get("stop_loss", 0.08),
+        post_update_checks=[_parse_stage(c) for c in raw.get("post_update_checks", [])],
     )
 
 
@@ -213,13 +192,9 @@ def get_strategy_paths(cfg: StrategyConfig) -> dict[str, Path]:
         "strat_root": strat_root,
         "panel": workspace / cfg.repo_root / cfg.panel_path,
         "catalog": workspace / cfg.catalog_path,
-        "t_full_state": workspace / cfg.t_full_source,
         "calendar": workspace / cfg.calendar_source,
         "ledger": workspace / cfg.repo_root / cfg.ledger_source,
         "output": workspace / cfg.output_dir,
-        "run_pointer": workspace / "strategy/artifacts" / cfg.strategy_id / "run.json",
-        "golden_meta": workspace / cfg.repo_root / cfg.golden_meta_path,
-        "factor_health_dir": workspace / cfg.repo_root / cfg.factor_health_dir,
     }
 
 

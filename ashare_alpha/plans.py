@@ -63,7 +63,7 @@ def current_plan(root):
     return json.loads((directory / "result.json").read_text(encoding="utf-8"))
 
 
-def publish_bundle(out_dir, result, writer):
+def publish_bundle(out_dir, result, writer, *, variant=None):
     """The index is the only commit point; failures preserve all prior readers."""
     validate_plan(result)
     out_dir = Path(out_dir)
@@ -75,8 +75,12 @@ def publish_bundle(out_dir, result, writer):
             str(result["exec_date"] or result["asof"]).replace("-", ""),
         )
     result.setdefault("format_version", FORMAT_VERSION)
+    # Different export sets are separate complete revisions of the same plan.
+    identity = (
+        result if variant is None else {"result": result, "export_variant": variant}
+    )
     content = json.dumps(
-        result, sort_keys=True, ensure_ascii=False, allow_nan=False
+        identity, sort_keys=True, ensure_ascii=False, allow_nan=False
     ).encode()
     revision_id = sha256(content).hexdigest()
     with publication_lock(root / ".publish.lock"):

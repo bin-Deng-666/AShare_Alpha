@@ -1,4 +1,4 @@
-"""Atomic JSON publication and bounded single-writer locks (macOS/Linux)."""
+"""Atomic file publication and nonblocking locks shared by application and data."""
 
 from contextlib import contextmanager
 import json
@@ -7,13 +7,12 @@ from pathlib import Path
 import tempfile
 
 
-def atomic_json(path, value):
+def atomic_bytes(path, payload):
     path = Path(path)
-    payload = json.dumps(value, ensure_ascii=False, indent=2, allow_nan=False)
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, name = tempfile.mkstemp(prefix="." + path.name + "-", dir=path.parent)
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+        with os.fdopen(fd, "wb") as stream:
             stream.write(payload)
             stream.flush()
             os.fsync(stream.fileno())
@@ -22,8 +21,15 @@ def atomic_json(path, value):
         Path(name).unlink(missing_ok=True)
 
 
+def atomic_json(path, value, *, default=None, allow_nan=False):
+    payload = json.dumps(
+        value, ensure_ascii=False, indent=2, default=default, allow_nan=allow_nan
+    )
+    atomic_bytes(path, payload.encode("utf-8"))
+
+
 @contextmanager
-def publication_lock(path):
+def publication_lock(path, *, message="Another publication is in progress"):
     import fcntl
 
     path = Path(path)
@@ -32,8 +38,8 @@ def publication_lock(path):
         try:
             fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as exc:
-            raise RuntimeError("Another publication is in progress") from exc
+            raise RuntimeError(message) from exc
         try:
-            yield
+            yield stream
         finally:
             fcntl.flock(stream, fcntl.LOCK_UN)

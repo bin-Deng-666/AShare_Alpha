@@ -1,7 +1,6 @@
 """Display audited data coverage and the latest closed session for the chosen strategy."""
 
 from __future__ import annotations
-import hashlib
 import json
 from pathlib import Path
 import duckdb
@@ -9,17 +8,6 @@ import pandas as pd
 from webui.app.core.config_loader import get_strategy_paths
 from webui.app.core.sessions import closed_session
 from webui.app.core import checkpoint as cp
-
-
-def _md5(path):
-    path = Path(path)
-    if not path.is_file():
-        return "N/A"
-    h = hashlib.md5()
-    with path.open("rb") as source:
-        for chunk in iter(lambda: source.read(8192), b""):
-            h.update(chunk)
-    return h.hexdigest()[:8]
 
 
 def _catalog_ok(path):
@@ -40,27 +28,20 @@ def _canonical_status(cfg):
     return read_status(state_root=root / "state", data_root=root)
 
 
-def _t_full(cfg):
-    paths = get_strategy_paths(cfg)
-    if paths["t_full_state"].name == "quality_report.json":
-        status = _canonical_status(cfg)
-        quality = status.get("quality", {})
-        observed = quality.get("bar_max_date")
-        latest = status.get("latest_run") or {}
-        return (
-            str(pd.Timestamp(observed).date())
-            if observed
-            and quality.get("current_for_latest_run")
-            and latest.get("status") == "success"
-            else None
-        )
-    # Static fixture/state contracts can supply an explicit observed date.
-    if paths["t_full_state"].is_file():
-        state = json.loads(paths["t_full_state"].read_text())
-        for field in ("stock_daily_asof", "bars_asof", "asof", "end_date"):
-            if state.get(field):
-                return str(pd.Timestamp(state[field]).date())
-    return None
+def _t_full(cfg, status=None):
+    status = _canonical_status(cfg) if status is None else status
+    quality = status.get("quality", {})
+    observed = quality.get("bar_max_date")
+    latest = status.get("latest_run") or {}
+    return (
+        str(pd.Timestamp(observed).date())
+        if observed
+        and not status.get("writer_active")
+        and quality.get("current_for_latest_run")
+        and quality.get("status") in ("pass", "review")
+        and latest.get("status") == "success"
+        else None
+    )
 
 
 def _per_source_dates(cfg):
@@ -86,7 +67,7 @@ def build_status(cfg):
     clock = closed_session(paths["calendar"])
     status = _canonical_status(cfg)
     quality = status.get("quality", {})
-    observed = _t_full(cfg)
+    observed = _t_full(cfg, status)
     latest = clock["session"]
     current = bool(
         latest
@@ -105,7 +86,6 @@ def build_status(cfg):
         reasons.append("数据尚未更新到最新收盘交易日。")
     if quality.get("status") == "review":
         reasons.extend(quality.get("issues", []))
-    golden = cp.get_golden_status(cfg.strategy_id)
     dataset = None
     if paths["panel"].name == "dataset.json" and paths["panel"].is_file():
         dataset = json.loads(paths["panel"].read_text())
@@ -120,7 +100,7 @@ def build_status(cfg):
         "latest_trade_date": latest,
         "calendar_covered": clock["calendar_covered"],
         "data_current": current,
-        "can_generate": current and golden["status"] != "fail",
+        "can_generate": current,
         "quality_status": quality.get("status", "not_audited"),
         "quality_issues": quality.get("issues", []),
         "audit_current": quality.get("current_for_latest_run", False),
@@ -130,5 +110,4 @@ def build_status(cfg):
         "catalog_ok": _catalog_ok(paths["catalog"]),
         "input_fingerprint": dataset.get("fingerprint") if dataset else None,
         "has_incomplete_update": cp.has_incomplete_update(cfg.strategy_id),
-        "golden_status": golden["status"],
     }

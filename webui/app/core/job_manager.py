@@ -8,7 +8,7 @@ import signal
 import sys
 from datetime import datetime, date, timedelta
 from webui.app.core.config_loader import get_strategy_paths
-from webui.app.core.schema import CheckConfig, StageConfig, StrategyConfig
+from webui.app.core.schema import StageConfig, StrategyConfig
 from webui.app.core.sessions import market_clock, closed_session
 from webui.app.core import checkpoint as cp
 
@@ -46,22 +46,16 @@ class JobManager:
             cfg, "prepare" if generate_plan else "update", resume=resume
         )
 
-    async def start_daily(self, cfg, override=False):
-        return await self._start(cfg, "daily", override=override)
+    async def start_daily(self, cfg):
+        return await self._start(cfg, "daily")
 
-    async def _start(self, cfg, kind, *, resume=False, override=False):
+    async def _start(self, cfg, kind, *, resume=False):
         async with self._lock:
             if self.is_busy:
                 return {
                     "error": "已有任务在运行中",
                     "job_id": self.current_job["job_id"],
                 }
-            if (
-                kind == "daily"
-                and cp.get_golden_status(cfg.strategy_id)["status"] == "fail"
-                and not override
-            ):
-                return {"error": "策略验证未通过，请先更新并检查策略。"}
             clock = market_clock()
             self._target_date = clock["cutoff"]
             if kind == "daily":
@@ -69,7 +63,12 @@ class JobManager:
                     self._signal_date(cfg)
                 except ValueError as exc:
                     return {"error": str(exc)}
-            stages = list(cfg.all_stages) if kind in ("update", "prepare") else []
+            # Verification also runs when reusing audited data; no cached check status.
+            stages = (
+                list(cfg.all_stages)
+                if kind in ("update", "prepare")
+                else list(cfg.post_update_checks)
+            )
             if kind in ("daily", "prepare"):
                 stages.append(
                     StageConfig(
@@ -101,23 +100,8 @@ class JobManager:
             self._t_full_before = _t_full(cfg)
             if resume and kind in ("update", "prepare"):
                 previous = cp.read_checkpoint(cfg.strategy_id)
-                if previous and previous.get("target_date") == self._target_date:
-                    for stage in previous.get("steps", []):
-                        if (
-                            stage["name"] in self._steps_status
-                            and stage["status"] == "completed"
-                        ):
-                            self._steps_status[stage["name"]] = "completed"
-                    # Recheck source receipts on every retry; only unchanged facts are skipped by data.
-                    for stage in cfg.update_pipeline:
-                        self._steps_status[stage.id] = "pending"
-                    self._steps_status["daily_plan"] = (
-                        "pending"
-                        if kind == "prepare"
-                        else self._steps_status.get("daily_plan", "pending")
-                    )
-                    if kind != "prepare":
-                        self._steps_status.pop("daily_plan", None)
+                if previous:
+                    self.output_lines.append("重新核对数据 receipts 并运行策略检查。")
             self._config = cfg
             cp.persist_job(cfg.strategy_id, self.current_job)
             self._task = asyncio.create_task(self._run_steps(job_id, kind, cfg, stages))
@@ -212,8 +196,6 @@ class JobManager:
                 self.current_job["stage"] = stage.label
                 self._reset_progress()
                 if stage.id == "daily_plan":
-                    if cp.get_golden_status(cfg.strategy_id)["status"] == "fail":
-                        raise ValueError("策略验证未通过，未生成新的交易计划。")
                     signal_date = self._signal_date(cfg)
                     command = self._resolve_daily_command(cfg)
                     if signal_date:
@@ -263,16 +245,7 @@ class JobManager:
                 if self.current_job["status"] != "running":
                     return
                 if rc:
-                    if isinstance(stage, CheckConfig) and stage.updates_golden:
-                        cp.save_golden_status(cfg.strategy_id, "fail", f"退出码 {rc}")
                     raise RuntimeError(f"{stage.label}失败，退出码 {rc}")
-                if isinstance(stage, CheckConfig) and stage.updates_golden:
-                    passed = "GOLDEN PASS" in "\n".join(self.output_lines[-50:])
-                    cp.save_golden_status(
-                        cfg.strategy_id,
-                        "pass" if passed else "fail",
-                        "GOLDEN PASS" if passed else "GOLDEN FAIL",
-                    )
                 self._steps_status[stage.id] = "completed"
                 self.output_lines.append(f"完成: {stage.label}")
                 self._checkpoint(cfg)
@@ -284,9 +257,6 @@ class JobManager:
                 end_time=datetime.now().isoformat(timespec="seconds"),
             )
             if kind in ("update", "prepare"):
-                from webui.app.core.t_full import _t_full
-
-                cp.write_last_success(cfg.strategy_id, _t_full(cfg))
                 cp.clear_checkpoint(cfg.strategy_id)
         except asyncio.CancelledError:
             self.current_job.update(

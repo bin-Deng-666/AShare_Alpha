@@ -44,7 +44,9 @@ uv run --frozen --extra dev ashare-alpha strategy backtest demo \
 uv run --frozen --extra dev ashare-alpha plan demo --panel /tmp/hold-run/inputs
 ```
 
-默认标的 `000001` 仅为接口示例。更换标的可传 `--params` JSON，如 `{"code":"600000"}`；每次运行仍只有一个标的。策略文件见 [demo](strategy/demo/README.md)。成交、手续费、T+1、公司行为和账户均由公共引擎处理，模型账户需要与实盘独立核对。
+默认标的 `000001` 仅为接口示例；更换标的可传 `--params` JSON，如 `{"code":"600000"}`。每次运行只持有一个标的，详见 [demo](strategy/demo/README.md)。成交与账户由公共引擎处理，模型账户需与实盘独立核对。
+
+默认日计划发布 `result.json` 和 `report.md`。需要买入、卖出及持仓 CSV 时加 `--csv`，导出随同一份计划原子提交。
 
 ## 结构与安装
 
@@ -53,7 +55,7 @@ uv run --frozen --extra dev ashare-alpha plan demo --panel /tmp/hold-run/inputs
 | `data/ashare_data/` | 数据拉取、派生、审计与查询 |
 | `backtest/` | 通用时钟、撮合、账户与结果 |
 | `strategy/demo/` | 唯一公开策略：单标的买入并持有 |
-| `strategy/research/` | 通用输入、结果和身份工具 |
+| `strategy/research/` | 运行发布、执行配置与内容身份工具 |
 | `ashare_alpha/` | 命令入口、工作区、策略注册与原子计划发布 |
 | `webui/` | 本地 API 与操作台 |
 

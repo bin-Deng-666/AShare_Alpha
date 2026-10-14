@@ -35,7 +35,7 @@ Parquet 是持久数据资产，catalog 是这些资产的查询定义。不会�
 
 - `paths.py`：唯一数据路径定义。
 - `runtime.py`：配置、限流和重试。
-- `storage.py`：原子文件发布、相同内容不重写、跨进程写锁。
+- `storage.py`：保留数据 JSON 序列化、Parquet 相同内容不重写和写锁 PID 契约；底层原子文件替换及排他锁由 `ashare_alpha.storage` 共用。
 - `calendar.py`：从已覆盖的交易日历解析目标日；过期日历不能冒充当前交易日。
 - `parquet_metadata.py`：优先从 Parquet footer 读取日期范围，没有统计信息才读日期列。
 - `incremental_files.py`：证券选择和逐日合并。

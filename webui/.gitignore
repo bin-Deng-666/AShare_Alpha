@@ -1,6 +1,0 @@
-# Job runtime state (auto-generated, per-strategy subdirectories)
-jobs/*/
-jobs/*.jsonl
-jobs/update_checkpoint.json
-jobs/last_successful_update.json
-jobs/golden_status.json

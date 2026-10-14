@@ -1,2 +1,2 @@
-# Full research + local console environment. Run from the repository root.
--e .[data,web,ml]
+# Data maintenance and local console environment. Run from the repository root.
+-e .[data,web]

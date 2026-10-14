@@ -104,7 +104,6 @@ def _config_to_dict(cfg: StrategyConfig) -> dict:
         "positions_columns": [
             {"key": c.key, "label": c.label} for c in cfg.positions_columns
         ],
-        "sell_reasons": cfg.sell_reasons,
         "update_stages": [
             {
                 "id": s.id,
@@ -139,13 +138,6 @@ async def get_positions(strategy_id: str):
     cfg = get_strategy(strategy_id)
     adapter = _load_adapter(strategy_id)
     return adapter.parse_positions(cfg)
-
-
-@router.get("/api/strategies/{strategy_id}/monitor")
-async def get_monitor(strategy_id: str):
-    cfg = get_strategy(strategy_id)
-    adapter = _load_adapter(strategy_id)
-    return adapter.parse_monitor(cfg)
 
 
 @router.get("/api/strategies/{strategy_id}/history")

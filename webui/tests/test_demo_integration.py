@@ -173,6 +173,61 @@ class DemoIntegrationTests(unittest.TestCase):
                     409,
                 )
 
+    def test_fixture_registration_reads_committed_orders_and_positions(self):
+        from ashare_alpha.plans import publish_bundle
+        from ashare_alpha.storage import atomic_json
+        from webui.app.core.config_loader import _discover
+        from dataclasses import replace
+
+        with patch.dict("os.environ", {"ASHARE_WEBUI_TEST_STRATEGIES": "1"}):
+            _discover()
+            try:
+                cfg = get_strategy("mock_alpha")
+                adapter = routes._load_adapter(cfg.strategy_id)
+                with (
+                    TemporaryDirectory() as directory,
+                    patch("ashare_alpha.paths.WORKSPACE_ROOT", Path(directory)),
+                ):
+                    root = Path(directory) / cfg.output_dir
+                    old = {
+                        "strategy": cfg.strategy_id,
+                        "asof": "2024-01-30",
+                        "exec_date": "2024-01-31",
+                        "positions": [{"code": "600000", "shares": 200}],
+                        "buy": [],
+                        "reduce": [],
+                    }
+                    new = {
+                        "strategy": cfg.strategy_id,
+                        "asof": "2024-01-31",
+                        "exec_date": "2024-02-01",
+                        "positions": [{"code": "000001", "shares": 100}],
+                        "buy": [{"code": "000001", "budget": 12000}],
+                        "reduce": [],
+                    }
+
+                    def writer(path, value):
+                        atomic_json(path / "result.json", value)
+                        return {"result_json": path / "result.json"}
+
+                    publish_bundle(root / "20240131", old, writer)
+                    publish_bundle(root / "20240201", new, writer)
+                    self.assertEqual(
+                        adapter.parse_positions(cfg)["positions"], new["positions"]
+                    )
+                    self.assertEqual(adapter.parse_daily_latest(cfg)["result"], new)
+                    self.assertEqual(
+                        adapter.parse_history_detail(cfg, "20240131")["result"], old
+                    )
+                    alternate = replace(cfg, display_name="Distinct fixture")
+                    display = routes._config_to_dict(alternate)
+                    self.assertEqual(
+                        display["plan_columns"]["buy"][1]["label"], "Test budget"
+                    )
+            finally:
+                routes._adapter_cache.pop("mock_alpha", None)
+        _discover()
+
     def test_future_saved_plan_is_not_displayed_as_current(self):
         cfg = get_strategy("demo")
         adapter = routes._load_adapter(cfg.strategy_id)
@@ -234,9 +289,8 @@ class DemoIntegrationTests(unittest.TestCase):
             positions = client.get("/api/strategies/demo/positions")
             self.assertEqual(positions.status_code, 200)
             self.assertIn("positions", positions.json())
-            monitor = client.get("/api/strategies/demo/monitor")
-            self.assertEqual(monitor.status_code, 200)
-            self.assertNotEqual(monitor.json()["golden"]["status"], "pass")
+            schema = client.get("/openapi.json").json()
+            self.assertNotIn("/api/strategies/{strategy_id}/monitor", schema["paths"])
 
 
 if __name__ == "__main__":
